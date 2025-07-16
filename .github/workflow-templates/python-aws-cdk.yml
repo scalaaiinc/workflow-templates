@@ -1,4 +1,4 @@
-# .github/workflows/python-aws-cdk.yml
+# .github/workflow-templates/python-aws-cdk.yml
 
 name: Python CI/CD with AWS CDK
 
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.12', '3.13'] # Run tests on multiple Python versions
+        python-version: ['3.12', '3.13'] # Run tests on multiple Python versions
 
     steps:
       # 1. Checkout the repository code
@@ -148,7 +148,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          aws-region: us-east-1
+          aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
       - name: Install AWS CDK and Python dependencies
         run: |
