@@ -1,5 +1,5 @@
 {
-    "name": "Python App with AWS CDK Deployment",
+    "name": "Python CI/CD with AWS CDK",
     "description": "CI/CD workflow for Python projects that runs tests, reports coverage, and deploys using AWS CDK.",
     "iconName": "python",
     "categories": [
