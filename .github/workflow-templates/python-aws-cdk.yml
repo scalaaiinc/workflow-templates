@@ -8,6 +8,7 @@ on:
     branches:
       - main
       - develop
+      - 'feature/**' # Trigger on pushes to feature branches
   pull_request:
     branches:
       - main
@@ -65,8 +66,8 @@ jobs:
     name: Deploy to Playground
     needs: test # This job will only run if the 'test' job succeeds
     runs-on: ubuntu-latest
-    # Condition: Only run on pushes to the 'develop' branch
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    # Condition: Only run on pushes to branches starting with 'feature/'
+    if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
 
     steps:
       - name: Check out code
@@ -75,7 +76,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Configure AWS Credentials for Playground
         uses: aws-actions/configure-aws-credentials@v4
@@ -91,7 +92,7 @@ jobs:
 
       - name: CDK Deploy to Playground
         run: |
-          cdk deploy --context env=playground --require-approval never
+          cdk deploy --context environment_name=playground --require-approval never
 
   # --- Deployment to Preview Environment (Commented Out) ---
   # deploy-preview:
@@ -108,7 +109,7 @@ jobs:
   #     - name: Set up Python
   #       uses: actions/setup-python@v4
   #       with:
-  #         python-version: '3.11'
+  #         python-version: '3.12'
   # 
   #     - name: Configure AWS Credentials for Preview
   #       uses: aws-actions/configure-aws-credentials@v4
@@ -124,7 +125,7 @@ jobs:
   # 
   #     - name: CDK Deploy to Preview
   #       run: |
-  #         cdk deploy --context env=preview --require-approval never
+  #         cdk deploy --context environment_name=preview --require-approval never
 
   # --- Deployment to Live Environment ---
   deploy-live:
@@ -142,7 +143,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Configure AWS Credentials for Live
         uses: aws-actions/configure-aws-credentials@v4
@@ -158,4 +159,4 @@ jobs:
 
       - name: CDK Deploy to Live
         run: |
-          cdk deploy --context env=live --require-approval never
+          cdk deploy --context environment_name=live --require-approval never
