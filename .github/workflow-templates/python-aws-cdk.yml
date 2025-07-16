@@ -47,11 +47,20 @@ jobs:
           pip install -r requirements.txt # Assuming you have a requirements.txt
           pip install pytest coverage # Install testing tools
 
-      # 4. Run tests with coverage
-      #    - Runs pytest on the 'tests/' directory.
-      #    - Uses the coverage package to measure code coverage.
-      #    - The `coverage report` command will display the results in the action's log.
+      # 4. Check if the tests directory exists
+      - name: Check for tests directory
+        id: check_tests_dir
+        run: |
+          if [ -d "tests" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      # 5. Run tests with coverage if the directory exists
+      #    - This step is skipped if the 'tests' directory is not found.
       - name: Run tests and generate coverage report
+        if: steps.check_tests_dir.outputs.exists == 'true'
         run: |
           coverage run -m pytest tests/
           coverage report
