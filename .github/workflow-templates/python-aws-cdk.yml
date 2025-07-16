@@ -1,4 +1,4 @@
-# .github/python/main.yml
+# .github/workflows/python-aws-cdk.yml
 
 name: Python CI/CD with AWS CDK
 
