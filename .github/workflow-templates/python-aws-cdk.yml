@@ -95,7 +95,7 @@ jobs:
       - name: Install AWS CDK and Python dependencies
         run: |
           npm install -g aws-cdk
-          pip install -r requirements.txt
+          python -m pip install -e ".[dev]"
 
       - name: CDK Deploy to Playground
         run: |
@@ -128,7 +128,7 @@ jobs:
   #     - name: Install AWS CDK and Python dependencies
   #       run: |
   #         npm install -g aws-cdk
-  #         pip install -r requirements.txt
+  #         python -m pip install -e ".[dev]"
   #
   #     - name: CDK Deploy to Preview
   #       run: |
@@ -162,7 +162,7 @@ jobs:
       - name: Install AWS CDK and Python dependencies
         run: |
           npm install -g aws-cdk
-          pip install -r requirements.txt
+          python -m pip install -e ".[dev]"
 
       - name: CDK Deploy to Live
         run: |
