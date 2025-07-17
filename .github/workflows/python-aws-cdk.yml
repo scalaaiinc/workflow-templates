@@ -24,11 +24,11 @@ jobs:
     steps:
       # 1. Checkout the repository code
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: scalaaiinc/checkout@v4
 
       # 2. Set up the specified Python version
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: scalaaiinc/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -70,15 +70,15 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: scalaaiinc/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: scalaaiinc/setup-python@v4
         with:
           python-version: '3.12'
 
       - name: Configure AWS Credentials for Playground
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: scalaaiinc/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
@@ -103,15 +103,15 @@ jobs:
   #
   #   steps:
   #     - name: Check out code
-  #       uses: actions/checkout@v4
+  #       uses: scalaaiinc/checkout@v4
   #
   #     - name: Set up Python
-  #       uses: actions/setup-python@v4
+  #       uses: scalaaiinc/setup-python@v4
   #       with:
   #         python-version: '3.12'
   #
   #     - name: Configure AWS Credentials for Preview
-  #       uses: aws-actions/configure-aws-credentials@v4
+  #       uses: scalaaiinc/configure-aws-credentials@v4
   #       with:
   #         aws-access-key-id: ${{ secrets.PREVIEW_CICD_AWS_KEY }}
   #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
@@ -137,15 +137,15 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: scalaaiinc/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: scalaaiinc/setup-python@v4
         with:
           python-version: '3.12'
 
       - name: Configure AWS Credentials for Live
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: scalaaiinc/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
