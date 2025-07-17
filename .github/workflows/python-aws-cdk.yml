@@ -2,6 +2,19 @@
 
 name: Python CI/CD with AWS CDK
 
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  release:
+    types: [created]
+
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
