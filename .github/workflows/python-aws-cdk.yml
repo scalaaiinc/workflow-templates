@@ -2,6 +2,12 @@ name: Python CI/CD with AWS CDK
 
 on:
   workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version to use for the workflow'
+        required: true
+        default: '3.12'
+
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
