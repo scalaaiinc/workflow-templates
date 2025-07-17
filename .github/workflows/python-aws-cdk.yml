@@ -1,157 +1,155 @@
-# .github/workflows/python-aws-cdk.yml
-
 name: Python CI/CD with AWS CDK
 
 on:
   workflow_call:
-    jobs:
-      # =================================================================
-      #  Continuous Integration (CI) Job
-      #  This job runs on every push, pull request, and release creation.
-      #  It installs dependencies, runs tests, and reports coverage.
-      # =================================================================
-      test:
-        name: Run Unit Tests & Coverage
-        runs-on: ubuntu-latest
-        strategy:
-          matrix:
-            python-version: ['3.12', '3.13'] # Run tests on multiple Python versions
+jobs:
+  # =================================================================
+  #  Continuous Integration (CI) Job
+  #  This job runs on every push, pull request, and release creation.
+  #  It installs dependencies, runs tests, and reports coverage.
+  # =================================================================
+  test:
+    name: Run Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13'] # Run tests on multiple Python versions
 
-        steps:
-          # 1. Checkout the repository code
-          - name: Check out code
-            uses: actions/checkout@v4
+    steps:
+      # 1. Checkout the repository code
+      - name: Check out code
+        uses: actions/checkout@v4
 
-          # 2. Set up the specified Python version
-          - name: Set up Python ${{ matrix.python-version }}
-            uses: actions/setup-python@v4
-            with:
-              python-version: ${{ matrix.python-version }}
+      # 2. Set up the specified Python version
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-          # 3. Install project dependencies
-          - name: Install dependencies
-            run: |
-              python -m pip install -e ".[dev]"
+      # 3. Install project dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install -e ".[dev]"
 
-          # 4. Check if the tests directory exists
-          - name: Check for tests directory
-            id: check_tests_dir
-            run: |
-              if [ -d "tests" ]; then
-                echo "exists=true" >> $GITHUB_OUTPUT
-              else
-                echo "exists=false" >> $GITHUB_OUTPUT
-              fi
+      # 4. Check if the tests directory exists
+      - name: Check for tests directory
+        id: check_tests_dir
+        run: |
+          if [ -d "tests" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
-          # 5. Run tests with coverage if the directory exists
-          #    - This step is skipped if the 'tests' directory is not found.
-          - name: Run tests and generate coverage report
-            if: steps.check_tests_dir.outputs.exists == 'true'
-            run: |
-              coverage run -m pytest tests/
-              coverage report
+      # 5. Run tests with coverage if the directory exists
+      #    - This step is skipped if the 'tests' directory is not found.
+      - name: Run tests and generate coverage report
+        if: steps.check_tests_dir.outputs.exists == 'true'
+        run: |
+          coverage run -m pytest tests/
+          coverage report
 
-      # =================================================================
-      #  Continuous Deployment (CD) Jobs
-      #  These jobs deploy the AWS CDK stack to different environments.
-      # =================================================================
+  # =================================================================
+  #  Continuous Deployment (CD) Jobs
+  #  These jobs deploy the AWS CDK stack to different environments.
+  # =================================================================
 
-      # --- Deployment to Playground Environment ---
-      deploy-playground:
-        name: Deploy to Playground
-        needs: test # This job will only run if the 'test' job succeeds
-        runs-on: ubuntu-latest
-        # Condition: Only run on pushes to branches starting with 'feature/'
-        if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
+  # --- Deployment to Playground Environment ---
+  deploy-playground:
+    name: Deploy to Playground
+    needs: test # This job will only run if the 'test' job succeeds
+    runs-on: ubuntu-latest
+    # Condition: Only run on pushes to branches starting with 'feature/'
+    if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
 
-        steps:
-          - name: Check out code
-            uses: actions/checkout@v4
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
 
-          - name: Set up Python
-            uses: actions/setup-python@v4
-            with:
-              python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
 
-          - name: Configure AWS Credentials for Playground
-            uses: aws-actions/configure-aws-credentials@v4
-            with:
-              aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
-              aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
-              aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+      - name: Configure AWS Credentials for Playground
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
+          aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
+          aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
-          - name: Install AWS CDK and Python dependencies
-            run: |
-              npm install -g aws-cdk
-              python -m pip install -e ".[dev]"
+      - name: Install AWS CDK and Python dependencies
+        run: |
+          npm install -g aws-cdk
+          python -m pip install -e ".[dev]"
 
-          - name: CDK Deploy to Playground
-            run: |
-              cdk deploy --context environment_name=playground --require-approval never
+      - name: CDK Deploy to Playground
+        run: |
+          cdk deploy --context environment_name=playground --require-approval never
 
-      # --- Deployment to Preview Environment (Commented Out) ---
-      # deploy-preview:
-      #   name: Deploy to Preview
-      #   needs: test
-      #   runs-on: ubuntu-latest
-      #   # Condition: Only run on pushes to the 'main' branch
-      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      #
-      #   steps:
-      #     - name: Check out code
-      #       uses: actions/checkout@v4
-      #
-      #     - name: Set up Python
-      #       uses: actions/setup-python@v4
-      #       with:
-      #         python-version: '3.12'
-      #
-      #     - name: Configure AWS Credentials for Preview
-      #       uses: aws-actions/configure-aws-credentials@v4
-      #       with:
-      #         aws-access-key-id: ${{ secrets.PREVIEW_CICD_AWS_KEY }}
-      #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
-      #         aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
-      #
-      #     - name: Install AWS CDK and Python dependencies
-      #       run: |
-      #         npm install -g aws-cdk
-      #         python -m pip install -e ".[dev]"
-      #
-      #     - name: CDK Deploy to Preview
-      #       run: |
-      #         cdk deploy --context environment_name=preview --require-approval never
+  # --- Deployment to Preview Environment (Commented Out) ---
+  # deploy-preview:
+  #   name: Deploy to Preview
+  #   needs: test
+  #   runs-on: ubuntu-latest
+  #   # Condition: Only run on pushes to the 'main' branch
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #
+  #   steps:
+  #     - name: Check out code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: '3.12'
+  #
+  #     - name: Configure AWS Credentials for Preview
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.PREVIEW_CICD_AWS_KEY }}
+  #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
+  #         aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+  #
+  #     - name: Install AWS CDK and Python dependencies
+  #       run: |
+  #         npm install -g aws-cdk
+  #         python -m pip install -e ".[dev]"
+  #
+  #     - name: CDK Deploy to Preview
+  #       run: |
+  #         cdk deploy --context environment_name=preview --require-approval never
 
-      # --- Deployment to Live Environment ---
-      deploy-live:
-        name: Deploy to Live
-        needs: test
-        runs-on: ubuntu-latest
-        environment: live # Defines a GitHub environment for protection rules and manual approval
-        # Condition: Only run when a new release is created
-        if: github.event_name == 'release'
+  # --- Deployment to Live Environment ---
+  deploy-live:
+    name: Deploy to Live
+    needs: test
+    runs-on: ubuntu-latest
+    environment: live # Defines a GitHub environment for protection rules and manual approval
+    # Condition: Only run when a new release is created
+    if: github.event_name == 'release'
 
-        steps:
-          - name: Check out code
-            uses: actions/checkout@v4
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
 
-          - name: Set up Python
-            uses: actions/setup-python@v4
-            with:
-              python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
 
-          - name: Configure AWS Credentials for Live
-            uses: aws-actions/configure-aws-credentials@v4
-            with:
-              aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
-              aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-              aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+      - name: Configure AWS Credentials for Live
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
-          - name: Install AWS CDK and Python dependencies
-            run: |
-              npm install -g aws-cdk
-              python -m pip install -e ".[dev]"
+      - name: Install AWS CDK and Python dependencies
+        run: |
+          npm install -g aws-cdk
+          python -m pip install -e ".[dev]"
 
-          - name: CDK Deploy to Live
-            run: |
-              cdk deploy --context environment_name=live --require-approval never
+      - name: CDK Deploy to Live
+        run: |
+          cdk deploy --context environment_name=live --require-approval never
