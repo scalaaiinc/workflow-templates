@@ -73,7 +73,7 @@ jobs:
           python-version: '3.12'
 
       - name: Configure AWS Credentials for Playground
-        uses: aws-scalaaiinc/configure-aws-credentials@v4
+        uses: scalaaiinc/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
