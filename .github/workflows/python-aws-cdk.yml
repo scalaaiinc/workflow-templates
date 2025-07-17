@@ -65,15 +65,15 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: scalaaiinc/checkout
+        uses: scalaaiinc/checkout@v4
 
       - name: Set up Python
-        uses: scalaaiinc/setup-python
+        uses: scalaaiinc/setup-python@v4
         with:
           python-version: '3.12'
 
       - name: Configure AWS Credentials for Playground
-        uses: scalaaiinc/configure-aws-credentials
+        uses: aws-scalaaiinc/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
@@ -98,15 +98,15 @@ jobs:
   #
   #   steps:
   #     - name: Check out code
-  #       uses: scalaaiinc/checkout
+  #       uses: scalaaiinc/checkout@v4
   #
   #     - name: Set up Python
-  #       uses: scalaaiinc/setup-python
+  #       uses: scalaaiinc/setup-python@v4
   #       with:
   #         python-version: '3.12'
   #
   #     - name: Configure AWS Credentials for Preview
-  #       uses: scalaaiinc/configure-aws-credentials
+  #       uses: scalaaiinc/configure-aws-credentials@v4
   #       with:
   #         aws-access-key-id: ${{ secrets.PREVIEW_CICD_AWS_KEY }}
   #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
@@ -132,15 +132,15 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: scalaaiinc/checkout
+        uses: scalaaiinc/checkout@v4
 
       - name: Set up Python
-        uses: scalaaiinc/setup-python
+        uses: scalaaiinc/setup-python@v4
         with:
           python-version: '3.12'
 
       - name: Configure AWS Credentials for Live
-        uses: scalaaiinc/configure-aws-credentials
+        uses: scalaaiinc/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
