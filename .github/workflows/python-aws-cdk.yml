@@ -127,6 +127,8 @@ jobs:
           aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
       - uses: scalaaiinc/setup-buildx-action@master
+        with:
+          platforms: 'arm64,amd64'
 
       - name: CDK Deploy to Playground
         run: |
