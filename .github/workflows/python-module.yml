@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload GitHub Pages artifact
         if: steps.check_tests_dir.outputs.exists == 'true' && matrix.python-version == '3.12'
-        uses: uses: scalaaiinc/upload-artifact@main
+        uses: scalaaiinc/upload-artifact@main
         with:
           name: github-pages
           path: htmlcov/
