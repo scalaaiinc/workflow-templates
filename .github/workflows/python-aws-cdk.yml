@@ -61,6 +61,7 @@ jobs:
         run: |
           coverage run -m pytest tests/
           coverage report
+          coverage xml
 
       - name: Publish coverage report
         if: steps.check_tests_dir.outputs.exists == 'true'
