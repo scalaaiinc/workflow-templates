@@ -89,8 +89,8 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Build Python module
-      run: |
-        python -m build
+        run: |
+          python -m build
 
       - name: Configure Twine for AWS CodeArtifact
         run: |
