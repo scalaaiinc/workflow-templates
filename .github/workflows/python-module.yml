@@ -83,3 +83,23 @@ jobs:
         uses: scalaaiinc/setup-python@main
         with:
           python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -e ".[dev]"
+
+      - name: Build Python module
+      run: |
+        python -m build
+
+      - name: Configure Twine for AWS CodeArtifact
+        run: |
+          aws codeartifact login --tool twine --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+
+      - name: Upload to AWS CodeArtifact with Twine
+        run: |
+          twine upload --repository codeartifact ./dist/*.whl
