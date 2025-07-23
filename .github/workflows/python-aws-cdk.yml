@@ -61,14 +61,14 @@ jobs:
         run: |
           coverage run -m pytest tests/
           coverage report
-          coverage xml
+          coverage html
 
-      - name: Publish coverage report
+      - name: Publish HTML coverage report
         if: steps.check_tests_dir.outputs.exists == 'true'
         uses: scalaaiinc/upload-artifact@main
         with:
-          name: coverage-report-${{ matrix.python-version }}
-          path: coverage.xml
+          name: coverage-html-${{ matrix.python-version }}
+          path: htmlcov/
 
   # =================================================================
   #  Continuous Deployment (CD) Jobs
