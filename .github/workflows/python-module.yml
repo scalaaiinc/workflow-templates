@@ -1,4 +1,4 @@
-name: Python CI/CD with AWS CDK
+name: Python CI/CD for modules only
 
 on:
   workflow_call:
@@ -49,6 +49,13 @@ jobs:
         run: |
           docker run -d -p 8000:8000 --name dynamodb-local amazon/dynamodb-local
 
+      - name: Configure AWS Credentials for Playground
+        uses: scalaaiinc/configure-aws-credentials@main
+        with:
+          aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
+          aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
+          aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+
       - name: Run tests and generate coverage report
         if: steps.check_tests_dir.outputs.exists == 'true'
         run: |
@@ -62,84 +69,11 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-  # =================================================================
-  #  Continuous Deployment (CD) Jobs
-  #  These jobs deploy the AWS CDK stack to different environments.
-  # =================================================================
-
-  # --- Deployment to Playground Environment ---
-  deploy-playground:
-    name: Deploy to Playground
+  module-deploy:
+    name: Deploy to Artifactory
     needs: test # This job will only run if the 'test' job succeeds
     runs-on: ubuntu-latest
     # Condition: Only run on pushes to branches starting with 'feature/'
-    if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
-
-    steps:
-      - name: Check out code
-        uses: scalaaiinc/checkout@main
-
-      - name: Set up Python
-        uses: scalaaiinc/setup-python@main
-        with:
-          python-version: '3.12'
-
-      - name: Configure AWS Credentials for Playground
-        uses: scalaaiinc/configure-aws-credentials@main
-        with:
-          aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
-          aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
-          aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
-
-      - name: Install AWS CDK and Python dependencies
-        run: |
-          npm install -g aws-cdk
-          python -m pip install -e ".[dev]"
-
-      - name: CDK Deploy to Playground
-        run: |
-          cdk deploy --context environment_name=playground --require-approval never
-
-  # --- Deployment to Preview Environment (Commented Out) ---
-  # deploy-preview:
-  #   name: Deploy to Preview
-  #   needs: test
-  #   runs-on: ubuntu-latest
-  #   # Condition: Only run on pushes to the 'main' branch
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #
-  #   steps:
-  #     - name: Check out code
-  #       uses: scalaaiinc/checkout@main
-  #
-  #     - name: Set up Python
-  #       uses: scalaaiinc/setup-python@main
-  #       with:
-  #         python-version: '3.12'
-  #
-  #     - name: Configure AWS Credentials for Preview
-  #       uses: scalaaiinc/configure-aws-credentials@main
-  #       with:
-  #         aws-access-key-id: ${{ secrets.PREVIEW_CICD_AWS_KEY }}
-  #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
-  #         aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
-  #
-  #     - name: Install AWS CDK and Python dependencies
-  #       run: |
-  #         npm install -g aws-cdk
-  #         python -m pip install -e ".[dev]"
-  #
-  #     - name: CDK Deploy to Preview
-  #       run: |
-  #         cdk deploy --context environment_name=preview --require-approval never
-
-  # --- Deployment to Live Environment ---
-  deploy-live:
-    name: Deploy to Live
-    needs: test
-    runs-on: ubuntu-latest
-    environment: live # Defines a GitHub environment for protection rules and manual approval
-    # Condition: Only run when a new release is created
     if: github.event_name == 'release'
 
     steps:
@@ -150,19 +84,3 @@ jobs:
         uses: scalaaiinc/setup-python@main
         with:
           python-version: '3.12'
-
-      - name: Configure AWS Credentials for Live
-        uses: scalaaiinc/configure-aws-credentials@main
-        with:
-          aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
-
-      - name: Install AWS CDK and Python dependencies
-        run: |
-          npm install -g aws-cdk
-          python -m pip install -e ".[dev]"
-
-      - name: CDK Deploy to Live
-        run: |
-          cdk deploy --context environment_name=live --require-approval never
