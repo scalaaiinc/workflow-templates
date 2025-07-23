@@ -3,6 +3,10 @@ name: Python CI/CD for modules only
 on:
   workflow_call:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
