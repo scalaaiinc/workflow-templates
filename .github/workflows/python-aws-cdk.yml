@@ -180,6 +180,12 @@ jobs:
   #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
   #         aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
   #
+  #     - uses: scalaaiinc/setup-qemu-action@master
+  #       with:
+  #         platforms: 'arm64,amd64'
+  #
+  #     - uses: scalaaiinc/setup-buildx-action@master
+  #
   #     - name: CDK Deploy to Preview
   #       run: |
   #         cdk deploy --context environment_name=preview --require-approval never
@@ -229,6 +235,12 @@ jobs:
           aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
           aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+
+      - uses: scalaaiinc/setup-qemu-action@master
+        with:
+          platforms: 'arm64,amd64'
+
+      - uses: scalaaiinc/setup-buildx-action@master
 
       - name: CDK Deploy to Live
         run: |
