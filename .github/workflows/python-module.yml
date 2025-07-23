@@ -3,11 +3,6 @@ name: Python CI/CD for modules only
 on:
   workflow_call:
 
-permissions:
-  id-token: write
-  contents: read
-  pages: write
-
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
@@ -74,18 +69,6 @@ jobs:
         with:
           name: coverage-html-${{ matrix.python-version }}
           path: htmlcov/
-
-      - name: Upload GitHub Pages artifact
-        if: steps.check_tests_dir.outputs.exists == 'true' && matrix.python-version == '3.12'
-        uses: scalaaiinc/upload-artifact@main
-        with:
-          name: github-pages
-          path: htmlcov/
-
-      - name: Deploy to GitHub Pages
-        if: steps.check_tests_dir.outputs.exists == 'true' && matrix.python-version == '3.12'
-        id: deployment
-        uses: scalaaiinc/deploy-pages@main
 
   module-deploy:
     name: Deploy to Artifactory
