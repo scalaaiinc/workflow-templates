@@ -120,10 +120,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
           AWS_DEFAULT_REGION: us-east-1
 
-      - name: Print Code Deploy Token
-        run: |
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN: $AWS_CODEARTIFACT_AUTHORIZATION_TOKEN"
-
       - name: Configure AWS Credentials for Playground
         uses: scalaaiinc/configure-aws-credentials@main
         with:
