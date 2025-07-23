@@ -61,7 +61,6 @@ jobs:
         run: |
           coverage run -m pytest tests/
           coverage report
-          coverage xml
           coverage html
 
       - name: Publish HTML coverage report
@@ -70,6 +69,10 @@ jobs:
         with:
           name: coverage-html-${{ matrix.python-version }}
           path: htmlcov/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: scalaaiinc/deploy-pages@main
 
   module-deploy:
     name: Deploy to Artifactory
