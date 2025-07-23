@@ -114,7 +114,7 @@ jobs:
       - name: Get Code Deploy Token
         id: codedeploy_token
         run: |
-          echo "token=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
+          echo -n "token=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
