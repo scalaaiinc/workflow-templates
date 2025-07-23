@@ -59,9 +59,7 @@ jobs:
       - name: Run tests and generate coverage report
         if: steps.check_tests_dir.outputs.exists == 'true'
         run: |
-          coverage run -m pytest tests/
-          coverage report
-          coverage html
+          pytest --cov-report=html tests
 
       - name: Publish HTML coverage report
         if: steps.check_tests_dir.outputs.exists == 'true'
