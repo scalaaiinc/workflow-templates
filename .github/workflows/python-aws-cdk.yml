@@ -114,11 +114,15 @@ jobs:
       - name: Get Code Deploy Token
         id: codedeploy_token
         run: |
-          echo "token=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
           AWS_DEFAULT_REGION: us-east-1
+
+      - name: Print Code Deploy Token
+        run: |
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN: $AWS_CODEARTIFACT_AUTHORIZATION_TOKEN"
 
       - name: Configure AWS Credentials for Playground
         uses: scalaaiinc/configure-aws-credentials@main
@@ -130,8 +134,6 @@ jobs:
       - name: CDK Deploy to Playground
         run: |
           cdk deploy --context environment_name=playground --require-approval never
-        env:
-          AWS_CODEARTIFACT_AUTHORIZATION_TOKEN: ${{ steps.codedeploy_token.outputs.token }}
 
   # deploy-preview:
   #   name: Deploy to Preview
