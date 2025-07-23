@@ -38,7 +38,6 @@ jobs:
       # 3. Install project dependencies
       - name: Install dependencies
         run: |
-          aws codeartifact login --tool pip --domain my_domain --domain-owner 111122223333 --repository my_repo
           python -m pip install -e ".[dev]"
 
       # 4. Check if the tests directory exists
