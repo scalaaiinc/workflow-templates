@@ -67,7 +67,7 @@ jobs:
         if: steps.check_tests_dir.outputs.exists == 'true'
         uses: scalaaiinc/upload-artifact@main
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.python-version }}
           path: coverage.xml
 
   module-deploy:
