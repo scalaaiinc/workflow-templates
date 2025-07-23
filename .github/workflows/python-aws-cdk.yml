@@ -111,6 +111,15 @@ jobs:
           npm install -g aws-cdk
           python -m pip install -e ".[dev]"
 
+      - name: Get Code Deploy Token
+        id: codedeploy_token
+        run: |
+          echo "token=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+
       - name: Configure AWS Credentials for Playground
         uses: scalaaiinc/configure-aws-credentials@main
         with:
@@ -121,6 +130,8 @@ jobs:
       - name: CDK Deploy to Playground
         run: |
           cdk deploy --context environment_name=playground --require-approval never
+        env:
+          AWS_CODEARTIFACT_AUTHORIZATION_TOKEN: ${{ steps.codedeploy_token.outputs.token }}
 
   # deploy-preview:
   #   name: Deploy to Preview
@@ -151,6 +162,15 @@ jobs:
   #         npm install -g aws-cdk
   #         python -m pip install -e ".[dev]"
   #
+  #     - name: Get Code Deploy Token
+  #       id: codedeploy_token_preview
+  #       run: |
+  #         echo "token=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
+  #       env:
+  #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+  #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+  #         AWS_DEFAULT_REGION: us-east-1
+  #
   #     - name: Configure AWS Credentials for Preview
   #       uses: scalaaiinc/configure-aws-credentials@main
   #       with:
@@ -161,6 +181,8 @@ jobs:
   #     - name: CDK Deploy to Preview
   #       run: |
   #         cdk deploy --context environment_name=preview --require-approval never
+  #       env:
+  #         AWS_CODEARTIFACT_AUTHORIZATION_TOKEN: ${{ steps.codedeploy_token_preview.outputs.token }}
 
   # --- Deployment to Live Environment ---
   deploy-live:
@@ -193,6 +215,15 @@ jobs:
           npm install -g aws-cdk
           python -m pip install -e ".[dev]"
 
+      - name: Get Code Deploy Token
+        id: codedeploy_token_live
+        run: |
+          echo "token=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+
       - name: Configure AWS Credentials for Live
         uses: scalaaiinc/configure-aws-credentials@main
         with:
@@ -203,3 +234,5 @@ jobs:
       - name: CDK Deploy to Live
         run: |
           cdk deploy --context environment_name=live --require-approval never
+        env:
+          AWS_CODEARTIFACT_AUTHORIZATION_TOKEN: ${{ steps.codedeploy_token_live.outputs.token }}
