@@ -126,10 +126,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
           aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
-      - uses: scalaaiinc/setup-qemu-action@master
-        with:
-          platforms: 'arm64,arm'
-
       - uses: scalaaiinc/setup-buildx-action@master
 
       - name: CDK Deploy to Playground
