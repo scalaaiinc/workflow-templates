@@ -136,7 +136,6 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v2
 
       - name: CDK Deploy to Playground
-        uses: docker/setup-buildx-action@v2
         run: |
           cdk deploy --context environment_name=playground --require-approval never
 
