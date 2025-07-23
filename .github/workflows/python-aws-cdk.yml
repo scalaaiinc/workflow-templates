@@ -126,7 +126,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
           aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
-      - uses: scalaaiinc/setup-qemu-action@main
+      - uses: scalaaiinc/setup-qemu-action@master
         with:
           platforms: 'arm64,arm'
 
