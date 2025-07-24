@@ -36,10 +36,10 @@ jobs:
 ``` 
 
 # CI/CD pipeline for Python Module
-`scalaaiinc/workflow-templates/.github/workflows/python-aws-cdk.yml@main`
+`scalaaiinc/workflow-templates/.github/workflows/python-module.yml@main`
 
 # CI/CD pipeline for Fargate Service
-`scalaaiinc/workflow-templates/.github/workflows/python-module.yml@main`
+`scalaaiinc/workflow-templates/.github/workflows/python-aws-cdk.yml@main`
 
 # CI/CD pipeline for AWS Lambda
 TBD
