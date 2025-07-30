@@ -44,5 +44,8 @@ jobs:
 # CI/CD pipeline for AWS Lambda
 TBD
 
+# CI/CD pipeline for Flutter Fargate Service
+`scalaaiinc/workflow-templates/.github/workflows/flutter-aws-cdk.yml@main`
+
 # CI/CD pipeline for Node Module
 TBD
