@@ -22,7 +22,7 @@ jobs:
       - name: Set up Flutter
         uses: scalaaiinc/flutter-action@main
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.32.8'
           channel: 'stable'
 
       # 3. Get Flutter dependencies
