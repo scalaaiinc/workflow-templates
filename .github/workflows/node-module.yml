@@ -19,11 +19,11 @@ jobs:
     steps:
       # 1. Checkout the repository code
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: scalaaiinc/checkout@main
 
       # 2. Set up the specified Node.js version
       - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: scalaaiinc/setup-node@main
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -59,7 +59,7 @@ jobs:
 
       - name: Publish coverage report
         if: steps.check_tests_dir.outputs.exists == 'true'
-        uses: actions/upload-artifact@v4
+        uses: scalaaiinc/upload-artifact@main
         with:
           name: coverage-${{ matrix.node-version }}
           path: coverage/
@@ -73,10 +73,10 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: scalaaiinc/checkout@main
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: scalaaiinc/setup-node@main
         with:
           node-version: '20.x'
 
