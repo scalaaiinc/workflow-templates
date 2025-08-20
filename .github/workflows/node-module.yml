@@ -50,6 +50,11 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Start DynamoDB Local
+        if: steps.check_tests_dir.outputs.exists == 'true'
+        run: |
+          docker run -d -p 8000:8000 --name dynamodb-local amazon/dynamodb-local
+
       # 5. Run tests with coverage if the directory exists
       #    - This step is skipped if the 'tests' directory is not found.
       - name: Run tests and generate coverage report
