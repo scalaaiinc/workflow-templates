@@ -44,7 +44,7 @@ jobs:
       - name: Check for tests directory
         id: check_tests_dir
         run: |
-          if [ -d "src/__tests__" ]; then
+          if [ -d "src/__tests__" ] || [ -d "tests" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
