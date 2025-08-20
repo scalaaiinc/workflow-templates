@@ -115,7 +115,15 @@ jobs:
 
       - name: Configure pip for AWS CodeArtifact
         run: |
-          aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
+          aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository pypi-store --region us-east-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+
+      - name: Configure npm for AWS CodeArtifact
+        run: |
+          aws codeartifact login --tool npm --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -173,7 +181,15 @@ jobs:
   #
   #     - name: Configure pip for AWS CodeArtifact
   #       run: |
-  #         aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
+  #         aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository pypi-store --region us-east-1
+  #       env:
+  #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+  #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+  #         AWS_DEFAULT_REGION: us-east-1
+  #
+  #     - name: Configure npm for AWS CodeArtifact
+  #       run: |
+  #         aws codeartifact login --tool npm --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
   #       env:
   #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
   #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -233,7 +249,15 @@ jobs:
 
       - name: Configure pip for AWS CodeArtifact
         run: |
-          aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
+          aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository pypi-store --region us-east-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+      
+      - name: Configure npm for AWS CodeArtifact
+        run: |
+          aws codeartifact login --tool npm --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
