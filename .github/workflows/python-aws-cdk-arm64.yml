@@ -11,7 +11,7 @@ jobs:
   # =================================================================
   test:
     name: Run Unit Tests & Coverage
-    runs-on: ubuntu-24.04-arm64
+    runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
         python-version: ['3.12', '3.13'] # Run tests on multiple Python versions
@@ -89,7 +89,7 @@ jobs:
   deploy-playground:
     name: Deploy to Playground
     needs: test # This job will only run if the 'test' job succeeds
-    runs-on: ubuntu-24.04-arm64
+    runs-on: ubuntu-24.04-arm
     # Condition: Only run on pushes to branches starting with 'feature/'
     if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
 
@@ -141,7 +141,7 @@ jobs:
   # deploy-preview:
   #   name: Deploy to Preview
   #   needs: test
-  #   runs-on: ubuntu-24.04-arm64
+  #   runs-on: ubuntu-24.04-arm
   #   # Condition: Only run on pushes to the 'main' branch
   #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
   #
@@ -194,7 +194,7 @@ jobs:
   deploy-live:
     name: Deploy to Live
     needs: test
-    runs-on: ubuntu-24.04-arm64
+    runs-on: ubuntu-24.04-arm
     environment: live # Defines a GitHub environment for protection rules and manual approval
     # Condition: Only run when a new release is created
     if: github.event_name == 'release'
