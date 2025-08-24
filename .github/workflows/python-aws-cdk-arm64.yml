@@ -1,4 +1,4 @@
-name: Python CI/CD with AWS CDK on ARM64
+name: Python CI/CD with AWS CDK
 
 on:
   workflow_call:
@@ -11,10 +11,10 @@ jobs:
   # =================================================================
   test:
     name: Run Unit Tests & Coverage
-    runs-on: ubuntu-24.04-arm
+    runs-on: ARM64-runner
     strategy:
       matrix:
-        python-version: ['3.12', '3.13'] # Run tests on multiple Python versions
+        python-version: ['3.13'] # Run tests on multiple Python versions
 
     steps:
       # 1. Checkout the repository code
@@ -30,6 +30,7 @@ jobs:
       - name: Configure pip for AWS CodeArtifact
         run: |
           aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -40,6 +41,10 @@ jobs:
         run: |
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
+          elif [ -f "poetry.lock" ]; then
+            python -m pip install poetry
+            poetry config virtualenvs.create false
+            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root --no-interaction
           else
             python -m pip install -e ".[dev]"
           fi
@@ -89,7 +94,7 @@ jobs:
   deploy-playground:
     name: Deploy to Playground
     needs: test # This job will only run if the 'test' job succeeds
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     # Condition: Only run on pushes to branches starting with 'feature/'
     if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
 
@@ -100,11 +105,12 @@ jobs:
       - name: Set up Python
         uses: scalaaiinc/setup-python@main
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Configure pip for AWS CodeArtifact
         run: |
           aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -115,17 +121,13 @@ jobs:
           npm install -g aws-cdk
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
+          elif [ -f "poetry.lock" ]; then
+            python -m pip install poetry
+            poetry config virtualenvs.create false
+            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root --no-interaction
           else
             python -m pip install -e ".[dev]"
           fi
-
-      - name: Get Code Deploy Token
-        run: |
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure AWS Credentials for Playground
         uses: scalaaiinc/configure-aws-credentials@main
@@ -134,6 +136,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
           aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
 
+      - uses: scalaaiinc/setup-qemu-action@master
+        with:
+          platforms: 'arm64'
+
+      - uses: scalaaiinc/setup-buildx-action@master
+
       - name: CDK Deploy to Playground
         run: |
           cdk deploy --context environment_name=playground --require-approval never
@@ -141,7 +149,7 @@ jobs:
   # deploy-preview:
   #   name: Deploy to Preview
   #   needs: test
-  #   runs-on: ubuntu-24.04-arm
+  #   runs-on: ubuntu-latest
   #   # Condition: Only run on pushes to the 'main' branch
   #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
   #
@@ -152,11 +160,12 @@ jobs:
   #     - name: Set up Python
   #       uses: scalaaiinc/setup-python@main
   #       with:
-  #         python-version: '3.12'
+  #         python-version: '3.13'
   #
   #     - name: Configure pip for AWS CodeArtifact
   #       run: |
   #         aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+  #         echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
   #       env:
   #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
   #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -167,17 +176,13 @@ jobs:
   #         npm install -g aws-cdk
   #         if [ -f "requirements.txt" ]; then
   #           python -m pip install -r requirements.txt
+  #         elif [ -f "poetry.lock" ]; then
+  #           python -m pip install poetry
+  #           poetry config virtualenvs.create false
+  #           export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root --no-interaction
   #         else
   #           python -m pip install -e ".[dev]"
   #         fi
-  #
-  #     - name: Get Code Deploy Token
-  #       run: |
-  #         echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-  #       env:
-  #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-  #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-  #         AWS_DEFAULT_REGION: us-east-1
   #
   #     - name: Configure AWS Credentials for Preview
   #       uses: scalaaiinc/configure-aws-credentials@main
@@ -185,6 +190,12 @@ jobs:
   #         aws-access-key-id: ${{ secrets.PREVIEW_CICD_AWS_KEY }}
   #         aws-secret-access-key: ${{ secrets.PREVIEW_CICD_AWS_SECRET }}
   #         aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+  #
+  #     - uses: scalaaiinc/setup-qemu-action@master
+  #       with:
+  #         platforms: 'arm64'
+  #
+  #     - uses: scalaaiinc/setup-buildx-action@master
   #
   #     - name: CDK Deploy to Preview
   #       run: |
@@ -194,7 +205,7 @@ jobs:
   deploy-live:
     name: Deploy to Live
     needs: test
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     environment: live # Defines a GitHub environment for protection rules and manual approval
     # Condition: Only run when a new release is created
     if: github.event_name == 'release'
@@ -206,11 +217,12 @@ jobs:
       - name: Set up Python
         uses: scalaaiinc/setup-python@main
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Configure pip for AWS CodeArtifact
         run: |
           aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -221,17 +233,13 @@ jobs:
           npm install -g aws-cdk
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
+          elif [ -f "poetry.lock" ]; then
+            python -m pip install poetry
+            poetry config virtualenvs.create false
+            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root --no-interaction
           else
             python -m pip install -e ".[dev]"
           fi
-
-      - name: Get Code Deploy Token
-        run: |
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure AWS Credentials for Live
         uses: scalaaiinc/configure-aws-credentials@main
@@ -239,6 +247,12 @@ jobs:
           aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
           aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
           aws-region: us-east-1 # <-- IMPORTANT: Change this to your desired AWS region
+
+      - uses: scalaaiinc/setup-qemu-action@master
+        with:
+          platforms: 'arm64'
+
+      - uses: scalaaiinc/setup-buildx-action@master
 
       - name: CDK Deploy to Live
         run: |
