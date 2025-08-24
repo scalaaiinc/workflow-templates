@@ -94,7 +94,7 @@ jobs:
   deploy-playground:
     name: Deploy to Playground
     needs: test # This job will only run if the 'test' job succeeds
-    runs-on: ubuntu-latest
+    runs-on: ARM64-runner
     # Condition: Only run on pushes to branches starting with 'feature/'
     if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
 
@@ -143,7 +143,7 @@ jobs:
   # deploy-preview:
   #   name: Deploy to Preview
   #   needs: test
-  #   runs-on: ubuntu-latest
+  #   runs-on: ARM64-runner
   #   # Condition: Only run on pushes to the 'main' branch
   #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
   #
@@ -193,7 +193,7 @@ jobs:
   deploy-live:
     name: Deploy to Live
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ARM64-runner
     environment: live # Defines a GitHub environment for protection rules and manual approval
     # Condition: Only run when a new release is created
     if: github.event_name == 'release'
