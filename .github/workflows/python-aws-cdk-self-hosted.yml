@@ -104,7 +104,7 @@ jobs:
       - name: Set up Python
         uses: scalaaiinc/setup-python@main
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Configure pip for AWS CodeArtifact
         run: |
@@ -158,7 +158,7 @@ jobs:
   #     - name: Set up Python
   #       uses: scalaaiinc/setup-python@main
   #       with:
-  #         python-version: '3.12'
+  #         python-version: '3.13'
   #
   #     - name: Configure pip for AWS CodeArtifact
   #       run: |
@@ -214,7 +214,7 @@ jobs:
       - name: Set up Python
         uses: scalaaiinc/setup-python@main
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Configure pip for AWS CodeArtifact
         run: |
