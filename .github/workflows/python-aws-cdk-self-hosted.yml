@@ -136,7 +136,7 @@ jobs:
 
       - uses: scalaaiinc/setup-qemu-action@master
         with:
-          platforms: 'arm64,amd64'
+          platforms: 'arm64'
 
       - uses: scalaaiinc/setup-buildx-action@master
 
@@ -194,7 +194,7 @@ jobs:
   #
   #     - uses: scalaaiinc/setup-qemu-action@master
   #       with:
-  #         platforms: 'arm64,amd64'
+  #         platforms: 'arm64'
   #
   #     - uses: scalaaiinc/setup-buildx-action@master
   #
@@ -254,7 +254,7 @@ jobs:
 
       - uses: scalaaiinc/setup-qemu-action@master
         with:
-          platforms: 'arm64,amd64'
+          platforms: 'arm64'
 
       - uses: scalaaiinc/setup-buildx-action@master
 
