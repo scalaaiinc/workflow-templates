@@ -30,6 +30,7 @@ jobs:
       - name: Configure pip for AWS CodeArtifact
         run: |
           aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -40,6 +41,9 @@ jobs:
         run: |
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
+          elif [ -f "poetry.lock" ]; then
+            python -m pip install poetry
+            export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev
           else
             python -m pip install -e ".[dev]"
           fi
@@ -105,6 +109,7 @@ jobs:
       - name: Configure pip for AWS CodeArtifact
         run: |
           aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -115,17 +120,12 @@ jobs:
           npm install -g aws-cdk
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
+          elif [ -f "poetry.lock" ]; then
+            python -m pip install poetry
+            export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev
           else
             python -m pip install -e ".[dev]"
           fi
-
-      - name: Get Code Deploy Token
-        run: |
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure AWS Credentials for Playground
         uses: scalaaiinc/configure-aws-credentials@main
@@ -163,6 +163,7 @@ jobs:
   #     - name: Configure pip for AWS CodeArtifact
   #       run: |
   #         aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+  #         echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
   #       env:
   #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
   #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -173,17 +174,12 @@ jobs:
   #         npm install -g aws-cdk
   #         if [ -f "requirements.txt" ]; then
   #           python -m pip install -r requirements.txt
+  #         elif [ -f "poetry.lock" ]; then
+  #           python -m pip install poetry
+  #           export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev
   #         else
   #           python -m pip install -e ".[dev]"
   #         fi
-  #
-  #     - name: Get Code Deploy Token
-  #       run: |
-  #         echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-  #       env:
-  #         AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-  #         AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-  #         AWS_DEFAULT_REGION: us-east-1
   #
   #     - name: Configure AWS Credentials for Preview
   #       uses: scalaaiinc/configure-aws-credentials@main
@@ -223,6 +219,7 @@ jobs:
       - name: Configure pip for AWS CodeArtifact
         run: |
           aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
@@ -233,17 +230,12 @@ jobs:
           npm install -g aws-cdk
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
+          elif [ -f "poetry.lock" ]; then
+            python -m pip install poetry
+            export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev
           else
             python -m pip install -e ".[dev]"
           fi
-
-      - name: Get Code Deploy Token
-        run: |
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure AWS Credentials for Live
         uses: scalaaiinc/configure-aws-credentials@main
