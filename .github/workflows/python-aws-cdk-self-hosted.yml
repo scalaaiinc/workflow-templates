@@ -43,7 +43,8 @@ jobs:
             python -m pip install -r requirements.txt
           elif [ -f "poetry.lock" ]; then
             python -m pip install poetry
-            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root
+            poetry config virtualenvs.create false
+            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev -no-root --no-interaction
           else
             python -m pip install -e ".[dev]"
           fi
@@ -122,7 +123,8 @@ jobs:
             python -m pip install -r requirements.txt
           elif [ -f "poetry.lock" ]; then
             python -m pip install poetry
-            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root
+            poetry config virtualenvs.create false
+            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev -no-root --no-interaction
           else
             python -m pip install -e ".[dev]"
           fi
@@ -176,7 +178,8 @@ jobs:
   #           python -m pip install -r requirements.txt
   #         elif [ -f "poetry.lock" ]; then
   #           python -m pip install poetry
-  #           export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root
+  #           poetry config virtualenvs.create false
+  #           export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev -no-root --no-interaction
   #         else
   #           python -m pip install -e ".[dev]"
   #         fi
@@ -232,7 +235,8 @@ jobs:
             python -m pip install -r requirements.txt
           elif [ -f "poetry.lock" ]; then
             python -m pip install poetry
-            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev --no-root
+            poetry config virtualenvs.create false
+            export POETRY_HTTP_BASIC_FRONTEND_USERNAME=aws && export POETRY_HTTP_BASIC_FRONTEND_PASSWORD=$AWS_CODEARTIFACT_AUTHORIZATION_TOKEN && poetry install --with dev -no-root --no-interaction
           else
             python -m pip install -e ".[dev]"
           fi
