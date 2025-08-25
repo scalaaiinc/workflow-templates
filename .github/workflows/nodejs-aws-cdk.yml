@@ -102,7 +102,7 @@ jobs:
     needs: test # This job will only run if the 'test' job succeeds
     runs-on: ubuntu-latest
     # Condition: Only run on pushes to branches starting with 'feature/'
-    if: startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push'
+    if: (startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
 
     steps:
       - name: Check out code
