@@ -96,6 +96,14 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Configure pip for AWS CodeArtifact
+        run: |
+          aws codeartifact login --tool pip --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository ${{ secrets.CODEARTIFACT_REPOSITORY }} --region us-east-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+
       - name: Install dependencies
         run: |
           if [ -f "requirements.txt" ]; then
