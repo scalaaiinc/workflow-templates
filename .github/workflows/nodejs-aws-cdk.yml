@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: ['22'] # Run tests on multiple Node.js versions
+        node-version: ["24"] # Run tests on multiple Node.js versions
 
     steps:
       # 1. Checkout the repository code
@@ -26,7 +26,7 @@ jobs:
         uses: scalaaiinc/setup-node@main
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Configure npm for AWS CodeArtifact
         run: |
@@ -111,7 +111,7 @@ jobs:
       - name: Set up Python
         uses: scalaaiinc/setup-python@main
         with:
-          python-version: '3.12'
+          python-version: "3.13"
 
       - name: Configure pip for AWS CodeArtifact
         run: |
@@ -155,7 +155,7 @@ jobs:
 
       - uses: scalaaiinc/setup-qemu-action@master
         with:
-          platforms: 'arm64,amd64'
+          platforms: "arm64,amd64"
 
       - uses: scalaaiinc/setup-buildx-action@master
 
@@ -177,7 +177,7 @@ jobs:
   #     - name: Set up Python
   #       uses: scalaaiinc/setup-python@main
   #       with:
-  #         python-version: '3.12'
+  #         python-version: '3.13'
   #
   #     - name: Configure pip for AWS CodeArtifact
   #       run: |
@@ -245,7 +245,7 @@ jobs:
       - name: Set up Python
         uses: scalaaiinc/setup-python@main
         with:
-          python-version: '3.12'
+          python-version: "3.13"
 
       - name: Configure pip for AWS CodeArtifact
         run: |
@@ -254,7 +254,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
           AWS_DEFAULT_REGION: us-east-1
-      
+
       - name: Configure npm for AWS CodeArtifact
         run: |
           aws codeartifact login --tool npm --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
@@ -289,7 +289,7 @@ jobs:
 
       - uses: scalaaiinc/setup-qemu-action@master
         with:
-          platforms: 'arm64,amd64'
+          platforms: "arm64,amd64"
 
       - uses: scalaaiinc/setup-buildx-action@master
 
