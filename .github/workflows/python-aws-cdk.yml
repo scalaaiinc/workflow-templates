@@ -146,7 +146,7 @@ jobs:
 
       - name: CDK Deploy to Playground
         run: |
-          cdk deploy --context environment_name=playground --require-approval never
+          cdk deploy --context environment_name=playground --require-approval never --all
 
   # deploy-preview:
   #   name: Deploy to Preview
@@ -206,7 +206,7 @@ jobs:
   #
   #     - name: CDK Deploy to Preview
   #       run: |
-  #         cdk deploy --context environment_name=preview --require-approval never
+  #         cdk deploy --context environment_name=preview --require-approval never --all
 
   # --- Deployment to Live Environment ---
   deploy-live:
@@ -268,4 +268,4 @@ jobs:
 
       - name: CDK Deploy to Live
         run: |
-          cdk deploy --context environment_name=live --require-approval never
+          cdk deploy --context environment_name=live --require-approval never --all
