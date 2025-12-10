@@ -30,7 +30,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: scalaaiinc/configure-aws-credentials@main
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/MyGitHubActionsRole
+          role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
 
       - name: Configure pip for AWS CodeArtifact
@@ -94,7 +94,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: scalaaiinc/configure-aws-credentials@main
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/MyGitHubActionsRole
+          role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
 
       - name: Configure pip for AWS CodeArtifact
