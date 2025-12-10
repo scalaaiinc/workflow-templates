@@ -3,10 +3,6 @@ name: Python CI/CD for modules only
 on:
   workflow_call:
 
-permissions:
-  id-token: write # Required for OIDC to fetch the GitHub ID Token
-  contents: read  # Required to check out the code (or write if you push back)
-
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
