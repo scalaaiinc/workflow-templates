@@ -113,6 +113,10 @@ jobs:
         run: |
           python -m build
 
+      - name: Configure Twine for AWS CodeArtifact
+        run: |
+          aws codeartifact login --tool twine --domain scala --repository python-packages --region us-east-1
+
       - name: Upload to AWS CodeArtifact with Twine
         run: |
           twine upload --repository codeartifact ./dist/*.whl
