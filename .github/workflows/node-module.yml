@@ -3,6 +3,10 @@ name: Node CI/CD for modules only
 on:
   workflow_call:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
@@ -27,13 +31,16 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Configure AWS Credentials for CodeArtifact
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
+          aws-region: us-east-1
+          role-session-name: GHA-test-${{ github.run_id }}-${{ matrix.node-version }}
+
       - name: Configure npm for AWS CodeArtifact
         run: |
-          aws codeartifact login --tool npm --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
+          aws codeartifact login --tool npm --domain scala --repository npm-packages --region us-east-1
 
       # 3. Install project dependencies
       - name: Install dependencies
@@ -85,13 +92,16 @@ jobs:
         with:
           node-version: '20.x'
 
+      - name: Configure AWS Credentials for CodeArtifact
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
+          aws-region: us-east-1
+          role-session-name: GHA-deploy-${{ github.run_id }}
+
       - name: Configure npm for AWS CodeArtifact
         run: |
-          aws codeartifact login --tool npm --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --region us-east-1
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
+          aws codeartifact login --tool npm --domain scala --repository npm-packages --region us-east-1
 
       - name: Install dependencies
         run: |
@@ -103,9 +113,5 @@ jobs:
 
       - name: Publish to AWS CodeArtifact
         run: |
-          npm publish --registry $(aws codeartifact get-repository-endpoint --domain ${{ secrets.CODEARTIFACT_DOMAIN }} --repository npm-store --format npm --region us-east-1 --query repositoryEndpoint --output text) 
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LIVE_CICD_AWS_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
+          npm publish --registry $(aws codeartifact get-repository-endpoint --domain scala --repository npm-packages --format npm --region us-east-1 --query repositoryEndpoint --output text)
 
