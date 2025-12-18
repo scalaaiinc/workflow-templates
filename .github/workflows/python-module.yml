@@ -3,6 +3,10 @@ name: Python CI/CD for modules only
 on:
   workflow_call:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
@@ -28,10 +32,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Configure AWS Credentials
-        uses: scalaaiinc/configure-aws-credentials@main
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
+          role-session-name: GHA-test-${{ github.run_id }}-${{ matrix.python-version }}
 
       - name: Configure pip for AWS CodeArtifact
         run: |
@@ -92,10 +97,11 @@ jobs:
           python-version: '3.12'
 
       - name: Configure AWS Credentials
-        uses: scalaaiinc/configure-aws-credentials@main
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
+          role-session-name: GHA-deploy-${{ github.run_id }}
 
       - name: Configure pip for AWS CodeArtifact
         run: |
