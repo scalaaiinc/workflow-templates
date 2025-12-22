@@ -146,7 +146,7 @@ jobs:
 
       - uses: scalaaiinc/setup-buildx-action@master
 
-      - name: Configure AWS Credentials for CodeArtifact
+      - name: Configure AWS Credentials for CDK Deployment to Playground
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::300438300173:role/cdk-hnb659fds-github-role-300438300173-us-east-1
