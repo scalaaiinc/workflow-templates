@@ -130,6 +130,9 @@ jobs:
           if [ -f "requirements.txt" ]; then
             python -m pip install -r requirements.txt
           else
+            if [ -d "stealth_web" ]; then
+              sed -i "s/scala-cdk==0.3.0/scala-cdk==1.0.3b0/g" pyproject.toml
+            fi
             python -m pip install -e ".[dev]"
           fi
 
@@ -152,7 +155,8 @@ jobs:
 
       - name: CDK Deploy to Playground
         run: |
-          cdk deploy --context environment_name=playground --require-approval never --all
+          export CDK_ENVIRONMENT=playground
+          cdk deploy --require-approval never --all
 
   # deploy-preview:
   #   name: Deploy to Preview
