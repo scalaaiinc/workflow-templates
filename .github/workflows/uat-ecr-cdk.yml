@@ -4,28 +4,19 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
     inputs:
-      mode:
-        description: 'Mode: synth, diff, or deploy'
-        required: true
-        default: 'deploy'
-      client:
-        description: 'Client name'
-        required: true
-      environment:
-        description: 'Environment name'
-        required: true
       service:
-        description: 'Service name'
         required: true
-      use-shared-bootstrap:
-        description: 'Use shared-services bootstrap'
-        required: false
-        default: 'true'
+        type: string
 
 env:
   AWS_REGION: us-east-1
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
+  MODE: deploy
+  CLIENT: scala.ai
+  ENVIRONMENT: uat
+  USE_SHARED_BOOTSTRAP: 'true'
 
 jobs:
   uat-ecr-cdk-deploy:
