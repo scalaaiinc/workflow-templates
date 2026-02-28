@@ -2,7 +2,7 @@ name: UAT ECR CDK Deploy
 on:
   push:
     branches:
-      - main
+      - feature/CLOUD-39
   workflow_dispatch:
   workflow_call:
     inputs:
