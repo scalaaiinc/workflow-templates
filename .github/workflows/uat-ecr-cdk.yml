@@ -27,7 +27,8 @@ on:
         default: "scala.ai"
     secrets:
       GITHUB_PAT:
-        required: false  
+        required: false
+
 env:
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
 
@@ -233,6 +234,8 @@ jobs:
           uv run cdk synth --all 2>&1 | tee synth.log
           echo "✅ CDK synth completed"
         env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
@@ -246,6 +249,8 @@ jobs:
           uv run cdk list 2>&1 | tee -a synth.log
           echo "✅ CDK list completed"
         env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
@@ -272,6 +277,8 @@ jobs:
             exit $DIFF_EXIT_CODE
           fi
         env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
@@ -286,6 +293,8 @@ jobs:
           uv run cdk deploy --all --require-approval never 2>&1 | tee deploy.log
           echo "✅ CDK deploy completed"
         env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
