@@ -1,4 +1,8 @@
 name: UAT ECR CDK Deploy
+permissions:
+  id-token: write
+  contents: read
+
 on:
   workflow_call:
     inputs:
