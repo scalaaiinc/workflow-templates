@@ -25,7 +25,9 @@ on:
         required: false
         type: string
         default: "scala.ai"
-      
+    secrets:
+      GITHUB_PAT:
+        required: false  
 env:
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
 
