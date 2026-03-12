@@ -103,8 +103,8 @@ jobs:
         shell: bash
         run: |
           REPO_DIR="$GITHUB_WORKSPACE"
-          SRC_CONFIG="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}/context.json"
-          DEST_CONFIG="$REPO_DIR/context.json"
+          SRC_CONFIG="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}/cdk.context.json"
+          DEST_CONFIG="$REPO_DIR/cdk.context.json"
 
           if [ ! -f "$SRC_CONFIG" ]; then
             echo "❌ Missing config file: $SRC_CONFIG"
