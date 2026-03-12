@@ -24,10 +24,10 @@ on:
       client:
         required: false
         type: string
-        default: "scala.ai"
+        default: "scala"
     secrets:
       GITHUB_PAT:
-        required: false
+        required: true
 
 env:
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
@@ -89,7 +89,31 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Get CodeArtifact token
+      - name: Checkout config repo
+        uses: actions/checkout@v4
+        with:
+          repository: scalaaiinc/client-configs-aws-cdk
+          ref: feature/CLOUD-36
+          path: config-repo
+          token: ${{ secrets.GITHUB_PAT }}
+
+      - name: Copy client context config to service repo root
+        shell: bash
+        run: |
+          REPO_DIR="$GITHUB_WORKSPACE"
+          SRC_CONFIG="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}/context.json"
+          DEST_CONFIG="$REPO_DIR/context.json"
+
+          if [ ! -f "$SRC_CONFIG" ]; then
+            echo "❌ Missing config file: $SRC_CONFIG"
+            exit 1
+          fi
+
+          cp "$SRC_CONFIG" "$DEST_CONFIG"
+          echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
+          echo "✅ Copied $SRC_CONFIG to $DEST_CONFIG"
+      
+      - name: Get CodeArtifact token0
         run: |
           TOKEN=$(aws codeartifact get-authorization-token \
             --domain scala \
