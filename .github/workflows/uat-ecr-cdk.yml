@@ -27,7 +27,9 @@ on:
         default: "scala"
     secrets:
       GITHUB_PAT:
-        required: false
+        required: true
+      SCALA_ORG_RO_PAT:
+        required: true
 
 env:
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
@@ -95,7 +97,7 @@ jobs:
           repository: scalaaiinc/client-configs-aws-cdk
           ref: feature/CLOUD-36
           path: config-repo
-          token: ${{ secrets.GITHUB_PAT }}
+          token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
       - name: Copy client context config to service repo root
         shell: bash
@@ -112,8 +114,11 @@ jobs:
           cp "$SRC_CONFIG" "$DEST_CONFIG"
           echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
           echo "✅ Copied $SRC_CONFIG to $DEST_CONFIG"
-      
-      - name: Get CodeArtifact token0
+        with:
+          # Pass client and environment as inputs to the step
+          client: ${{ inputs.client }}
+          environment: ${{ inputs.environment }}
+      - name: Get CodeArtifact token
         run: |
           TOKEN=$(aws codeartifact get-authorization-token \
             --domain scala \
