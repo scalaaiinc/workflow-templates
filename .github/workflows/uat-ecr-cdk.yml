@@ -95,7 +95,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: scalaaiinc/client-configs-aws-cdk
-          ref: feature/CLOUD-36
+          ref: feature/cloud-36
           path: config-repo
           token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
@@ -103,11 +103,20 @@ jobs:
         shell: bash
         run: |
           REPO_DIR="$GITHUB_WORKSPACE"
-          SRC_CONFIG="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}/cdk.context.json"
+          CONFIG_DIR="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}"
           DEST_CONFIG="$REPO_DIR/cdk.context.json"
 
-          if [ ! -f "$SRC_CONFIG" ]; then
-            echo "❌ Missing config file: $SRC_CONFIG"
+          echo "🔍 Contents of CONFIG_DIR ($CONFIG_DIR):"
+          ls -la "$CONFIG_DIR" 2>/dev/null || echo "  ⚠️  Directory does not exist"
+
+          if [ -f "$CONFIG_DIR/cdk.context.json" ]; then
+            SRC_CONFIG="$CONFIG_DIR/cdk.context.json"
+          elif [ -f "$CONFIG_DIR/context.json" ]; then
+            SRC_CONFIG="$CONFIG_DIR/context.json"
+          else
+            echo "❌ Missing config file in $CONFIG_DIR (tried cdk.context.json and context.json)"
+            echo "🔍 Contents of config-repo root:"
+            find "$GITHUB_WORKSPACE/config-repo" -maxdepth 4 -type f | sort || true
             exit 1
           fi
 
