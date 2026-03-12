@@ -27,7 +27,7 @@ on:
         default: "scala"
     secrets:
       GITHUB_PAT:
-        required: true
+        required: false
 
 env:
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
