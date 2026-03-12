@@ -114,10 +114,7 @@ jobs:
           cp "$SRC_CONFIG" "$DEST_CONFIG"
           echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
           echo "✅ Copied $SRC_CONFIG to $DEST_CONFIG"
-        with:
-          # Pass client and environment as inputs to the step
-          client: ${{ inputs.client }}
-          environment: ${{ inputs.environment }}
+        
       - name: Get CodeArtifact token
         run: |
           TOKEN=$(aws codeartifact get-authorization-token \
