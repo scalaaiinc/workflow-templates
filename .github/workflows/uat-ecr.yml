@@ -1,0 +1,215 @@
+name: UAT ECR CDK Deploy
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+      aws_account:
+        required: false
+        type: string
+        default: "193044710768"
+      aws_region:
+        required: false        
+        type: string
+        default: "us-east-1"
+      environment:
+        required: false
+        type: string
+        default: "uat"
+      client:
+        required: false
+        type: string
+        default: "scala"
+    secrets:
+      GITHUB_PAT:
+        required: true
+
+env:
+  CDK_BOOTSTRAP_ACCOUNT: "579107446826"
+
+jobs:
+  uat-ecr-cdk-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials for CodeArtifact
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: GHA-client-config-deploy-${{ github.run_id }}
+
+      - name: Get CodeArtifact token
+        run: |
+          TOKEN=$(aws codeartifact get-authorization-token \
+            --domain scala \
+            --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} \
+            --region ${{ inputs.aws_region }} \
+            --query authorizationToken \
+            --output text)
+          echo "::add-mask::$TOKEN"
+          echo "UV_INDEX_SCALA_CODEARTIFACT_PASSWORD=$TOKEN" >> $GITHUB_ENV
+          echo "UV_INDEX_SCALA_CODEARTIFACT_USERNAME=aws" >> $GITHUB_ENV
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: Set GitHub PAT for Docker builds
+        run: |
+          echo "GITHUB_PAT=${{ secrets.GITHUB_PAT }}" >> $GITHUB_ENV
+      
+      - name: Setup Python 
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.18"
+          enable-cache: true
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Configure AWS Credentials for CodeArtifact
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: GHA-client-config-deploy-${{ github.run_id }}
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get CodeArtifact token
+        run: |
+          TOKEN=$(aws codeartifact get-authorization-token \
+            --domain scala \
+            --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} \
+            --region ${{ inputs.aws_region }} \
+            --query authorizationToken \
+            --output text)
+          echo "::add-mask::$TOKEN"
+          echo "UV_INDEX_SCALA_CODEARTIFACT_PASSWORD=$TOKEN" >> $GITHUB_ENV
+          echo "UV_INDEX_SCALA_CODEARTIFACT_USERNAME=aws" >> $GITHUB_ENV
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$TOKEN" >> $GITHUB_ENV
+      
+      - name: Create NPMRC with CodeArtifact auth
+        run: |
+          aws codeartifact login --tool npm --domain scala --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} --repository npm-packages --region ${{ inputs.aws_region }}
+          cp ~/.npmrc .npmrc
+          echo "✅ .npmrc created with CodeArtifact credentials"
+      
+      # We want to run uv sync before docker build b/c we use scripts to calculate versions 
+      - name: Install dependencies
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          echo "📦 Installing dependencies with uv..."
+          uv sync 
+          echo "✅ Dependencies installed"
+        env:
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+
+      - name: Build Docker image
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          cp ~/.npmrc .npmrc
+          IMAGE_NAME="yoga-cdk-python"
+          docker build -t "$IMAGE_NAME:latest" .
+          echo "Built Docker image $IMAGE_NAME:latest"
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          
+      - name: Calculate and tag Docker image versions
+        id: image-tags
+        shell: bash   
+        run: |
+          cd "$REPO_DIR"
+
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          TARGET_VERSION=$(uv run python -c "import tomllib; from pathlib import Path; data = tomllib.loads(Path('pyproject.toml').read_text()); print(data['tool']['scala']['release']['target-version'])")
+          DOCKER_SAFE_VERSION=$(printf '%s' "$TARGET_VERSION" | sed 's/[^A-Za-z0-9_.-]/-/g')
+          BUILD_TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          ENV_TAG_PREFIX=$(printf '%s' "${{ inputs.environment }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+          SHA_TAG="sha-${GIT_COMMIT}"
+
+          if [ -z "$UAT_TAG" ]; then
+            UAT_TAG="${ENV_TAG_PREFIX}-${DOCKER_SAFE_VERSION}-${BUILD_TIMESTAMP}"
+          fi
+
+          RELEASE_TAG="$DOCKER_SAFE_VERSION"
+          SERVICE_TAG_SHA="${IMAGE_NAME}-${SHA_TAG}"
+          SERVICE_TAG_UAT="${IMAGE_NAME}-${UAT_TAG}"
+          SERVICE_TAG_RELEASE="${IMAGE_NAME}-${RELEASE_TAG}"
+
+          echo "GIT_COMMIT=$GIT_COMMIT" >> $GITHUB_ENV
+          echo "VERSION=$TARGET_VERSION" >> $GITHUB_ENV
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
+          echo "SHA_TAG=$SHA_TAG" >> $GITHUB_ENV
+          echo "UAT_TAG=$UAT_TAG" >> $GITHUB_ENV
+          echo "SERVICE_TAG_SHA=$SERVICE_TAG_SHA" >> $GITHUB_ENV
+          echo "SERVICE_TAG_UAT=$SERVICE_TAG_UAT" >> $GITHUB_ENV
+          echo "SERVICE_TAG_RELEASE=$SERVICE_TAG_RELEASE" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$SERVICE_TAG_UAT" >> $GITHUB_ENV
+
+          echo "version=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "release-tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "sha-tag=$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "uat-tag=$UAT_TAG" >> $GITHUB_OUTPUT
+
+          docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$SHA_TAG"
+          docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$UAT_TAG"
+          echo "Tagged Docker image as:"
+          echo "  - $IMAGE_NAME:$SHA_TAG"
+          echo "  - $IMAGE_NAME:$UAT_TAG"
+          echo "Reserved release promotion tag: $SERVICE_TAG_RELEASE"
+      
+      - name: Push Docker image to ECR
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+
+          echo "🔐 Ensuring ECR authentication for push..."
+          if aws sts assume-role \
+            --role-arn "arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-image-publishing-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}" \
+            --role-session-name "github-cdk-ecr-push-${{ github.run_id }}" > /tmp/assume-role-push.json 2>&1; then
+            AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' /tmp/assume-role-push.json)
+            AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' /tmp/assume-role-push.json)
+            AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' /tmp/assume-role-push.json)
+            export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            rm -f /tmp/assume-role-push.json
+            echo "✅ Using assumed role credentials for ECR push"
+          else
+            echo "⚠️  Could not assume shared-services role; using current credentials"
+          fi
+
+          aws ecr get-login-password --region "${{ inputs.aws_region }}" | \
+            docker login --username AWS --password-stdin "${{ env.CDK_BOOTSTRAP_ACCOUNT }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com"
+
+          ECR_REPO_PRIMARY="${{ env.CDK_BOOTSTRAP_ACCOUNT }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/cdk-hnb659fds-central-container-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}"
+          docker tag "$IMAGE_NAME:$SHA_TAG" "$ECR_REPO_PRIMARY:$SERVICE_TAG_SHA"
+          docker tag "$IMAGE_NAME:$UAT_TAG" "$ECR_REPO_PRIMARY:$SERVICE_TAG_UAT"
+
+          docker push "$ECR_REPO_PRIMARY:$SERVICE_TAG_SHA"
+          docker push "$ECR_REPO_PRIMARY:$SERVICE_TAG_UAT"
+
+          # Avoid leaking temporary role credentials into subsequent steps.
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+          echo "Pushed Docker image to ECR repos:"
+          echo "  - $ECR_REPO_PRIMARY:$SERVICE_TAG_SHA"
+          echo "  - $ECR_REPO_PRIMARY:$SERVICE_TAG_UAT"
+          echo "Release promotion target: $ECR_REPO_PRIMARY:$SERVICE_TAG_RELEASE"
+      
+
+      
