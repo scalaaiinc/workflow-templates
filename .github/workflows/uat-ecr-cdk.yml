@@ -95,7 +95,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: scalaaiinc/client-configs-aws-cdk
-          ref: feature/cloud-36
+          ref: feature/CLOUD-36
           path: config-repo
           token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
