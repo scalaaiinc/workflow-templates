@@ -28,6 +28,10 @@ on:
     secrets:
       GITHUB_PAT:
         required: true
+    outputs:
+      image_tag:
+        description: Built image tag for downstream deploy workflows.
+        value: ${{ jobs.uat-ecr-cdk-deploy.outputs.image_tag }}
 
 env:
   CDK_BOOTSTRAP_ACCOUNT: "579107446826"
@@ -35,72 +39,21 @@ env:
 jobs:
   uat-ecr-cdk-deploy:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.image-tags.outputs.uat_tag }}
     steps:
-      - name: Configure AWS Credentials for CodeArtifact
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Setup shared CDK environment
+        uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@feature/CLOUD-39
         with:
-          role-to-assume: arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}
-          aws-region: ${{ inputs.aws_region }}
-          role-session-name: GHA-client-config-deploy-${{ github.run_id }}
-
-      - name: Get CodeArtifact token
-        run: |
-          TOKEN=$(aws codeartifact get-authorization-token \
-            --domain scala \
-            --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} \
-            --region ${{ inputs.aws_region }} \
-            --query authorizationToken \
-            --output text)
-          echo "::add-mask::$TOKEN"
-          echo "UV_INDEX_SCALA_CODEARTIFACT_PASSWORD=$TOKEN" >> $GITHUB_ENV
-          echo "UV_INDEX_SCALA_CODEARTIFACT_USERNAME=aws" >> $GITHUB_ENV
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$TOKEN" >> $GITHUB_ENV
-
-      - name: Set GitHub PAT for Docker builds
-        run: |
-          echo "GITHUB_PAT=${{ secrets.GITHUB_PAT }}" >> $GITHUB_ENV
-      
-      - name: Setup Python 
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "0.9.18"
-          enable-cache: true
-
-      - name: Install AWS CDK CLI
-        run: npm install -g aws-cdk
-
-      - name: Configure AWS Credentials for CodeArtifact
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}
-          aws-region: ${{ inputs.aws_region }}
-          role-session-name: GHA-client-config-deploy-${{ github.run_id }}
+          aws_region: ${{ inputs.aws_region }}
+          cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
+          github_pat: ${{ secrets.GITHUB_PAT }}
+          python_version: "3.12"
+          node_version: "24"
+          uv_version: "0.9.18"
 
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Get CodeArtifact token
-        run: |
-          TOKEN=$(aws codeartifact get-authorization-token \
-            --domain scala \
-            --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} \
-            --region ${{ inputs.aws_region }} \
-            --query authorizationToken \
-            --output text)
-          echo "::add-mask::$TOKEN"
-          echo "UV_INDEX_SCALA_CODEARTIFACT_PASSWORD=$TOKEN" >> $GITHUB_ENV
-          echo "UV_INDEX_SCALA_CODEARTIFACT_USERNAME=aws" >> $GITHUB_ENV
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$TOKEN" >> $GITHUB_ENV
       
       - name: Create NPMRC with CodeArtifact auth
         run: |
@@ -163,9 +116,9 @@ jobs:
           echo "IMAGE_TAG=$SERVICE_TAG_UAT" >> $GITHUB_ENV
 
           echo "version=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "release-tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "sha-tag=$SHA_TAG" >> $GITHUB_OUTPUT
-          echo "uat-tag=$UAT_TAG" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "uat_tag=$UAT_TAG" >> $GITHUB_OUTPUT
 
           docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$SHA_TAG"
           docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$UAT_TAG"
