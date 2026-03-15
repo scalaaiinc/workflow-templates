@@ -40,7 +40,7 @@ jobs:
   uat-ecr-cdk-deploy:
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.image-tags.outputs.uat_tag }}
+      image_tag: ${{ steps.image-tags.outputs.service_tag_uat }}
     steps:
       - name: Setup shared CDK environment
         uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@feature/CLOUD-39
@@ -49,7 +49,7 @@ jobs:
           cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
           github_pat: ${{ secrets.GITHUB_PAT }}
           python_version: "3.12"
-          node_version: "24"
+          node_version: "22"
           uv_version: "0.9.18"
 
       - name: Checkout repo
@@ -127,6 +127,7 @@ jobs:
           echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
           echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
           echo "uat_tag=$UAT_TAG" >> $GITHUB_OUTPUT
+          echo "service_tag_uat=$SERVICE_TAG_UAT" >> $GITHUB_OUTPUT
 
           echo "Prepared Docker image tags:"
           echo "  - $IMAGE_NAME:$SHA_TAG"
