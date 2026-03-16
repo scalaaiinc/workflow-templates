@@ -25,6 +25,18 @@ on:
         required: false
         type: string
         default: "scala"
+      dockerfile_path:
+        required: false
+        type: string
+        default: "Dockerfile"
+      build_context:
+        required: false
+        type: string
+        default: "."
+      image_name:
+        required: false
+        type: string
+        default: ""
     secrets:
       GITHUB_PAT:
         required: true
@@ -87,9 +99,29 @@ jobs:
       - name: Set Docker image name
         shell: bash
         run: |
-          IMAGE_NAME="yoga-cdk-python"
+          IMAGE_NAME="${{ inputs.image_name }}"
+          if [ -z "$IMAGE_NAME" ]; then
+            IMAGE_NAME="${{ inputs.service }}"
+          fi
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
           echo "Using Docker image name: $IMAGE_NAME"
+
+      - name: Validate Docker build paths
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          if [ ! -f "${{ inputs.dockerfile_path }}" ]; then
+            echo "Dockerfile not found at: ${{ inputs.dockerfile_path }}"
+            echo "Repository root files:"
+            ls -la
+            exit 1
+          fi
+          if [ ! -d "${{ inputs.build_context }}" ]; then
+            echo "Build context directory not found: ${{ inputs.build_context }}"
+            exit 1
+          fi
+          echo "Using Dockerfile: ${{ inputs.dockerfile_path }}"
+          echo "Using build context: ${{ inputs.build_context }}"
           
       - name: Calculate and tag Docker image versions
         id: image-tags
@@ -162,10 +194,11 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --secret id=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD,env=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD \
+            -f "${{ inputs.dockerfile_path }}" \
             --push \
             -t "$ECR_REPO_PRIMARY:$SERVICE_TAG_SHA" \
             -t "$ECR_REPO_PRIMARY:$SERVICE_TAG_UAT" \
-            .
+            "${{ inputs.build_context }}"
 
           # Avoid leaking temporary role credentials into subsequent steps.
           unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
