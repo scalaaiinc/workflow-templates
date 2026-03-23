@@ -1,0 +1,172 @@
+name: ECR CKD Deploy
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      aws_account:
+        required: false
+        type: string
+        default: "193044710768"
+      aws_region:
+        required: false
+        type: string
+        default: "us-east-1"
+      environment:
+        required: false
+        type: string
+        default: "uat"
+      client:
+        required: false
+        type: string
+        default: "scala"
+      config_repo_ref:
+        required: false
+        type: string
+        default: "feature/CLOUD-36"
+    secrets:
+      GITHUB_PAT:
+        required: false
+      SCALA_ORG_RO_PAT:
+        required: true
+
+env:
+  CDK_BOOTSTRAP_ACCOUNT: "579107446826"
+
+jobs:
+  ecr-ckd-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup shared CDK environment
+        uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@feature/CLOUD-39
+        with:
+          aws_region: ${{ inputs.aws_region }}
+          cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
+          github_pat: ${{ secrets.GITHUB_PAT }}
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Checkout config repo
+        uses: actions/checkout@v4
+        with:
+          repository: scalaaiinc/client-configs-aws-cdk
+          ref: ${{ inputs.config_repo_ref }}
+          path: config-repo
+          token: ${{ secrets.SCALA_ORG_RO_PAT }}
+
+      - name: Copy client context config to service repo root
+        shell: bash
+        run: |
+          REPO_DIR="$GITHUB_WORKSPACE"
+          CONFIG_DIR="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}"
+          DEST_CONFIG="$REPO_DIR/cdk.context.json"
+
+          if [ -f "$CONFIG_DIR/cdk.context.json" ]; then
+            SRC_CONFIG="$CONFIG_DIR/cdk.context.json"
+          elif [ -f "$CONFIG_DIR/context.json" ]; then
+            SRC_CONFIG="$CONFIG_DIR/context.json"
+          else
+            echo "Missing config file in $CONFIG_DIR (tried cdk.context.json and context.json)"
+            find "$GITHUB_WORKSPACE/config-repo" -maxdepth 4 -type f | sort || true
+            exit 1
+          fi
+
+          cp "$SRC_CONFIG" "$DEST_CONFIG"
+          echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
+          echo "Copied $SRC_CONFIG to $DEST_CONFIG"
+          echo "Using IMAGE_TAG=${{ inputs.image_tag }}"
+
+      - name: Create .npmrc with CodeArtifact auth
+        run: |
+          aws codeartifact login --tool npm --domain scala --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} --repository npm-packages --region ${{ inputs.aws_region }}
+          cp ~/.npmrc .npmrc
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          uv sync
+        env:
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+
+      - name: Configure AWS credentials for deployment account
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account }}:role/cdk-hnb659fds-github-role-${{ inputs.aws_account }}-${{ inputs.aws_region }}
+          role-session-name: github-actions-cdk-deploy
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: CDK Synth
+        id: synth
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          uv run cdk synth --all 2>&1 | tee synth.log
+        env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+
+      - name: CDK List Stacks
+        id: list
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          uv run cdk list 2>&1 | tee -a synth.log
+        env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+
+      - name: CDK Diff
+        id: diff
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          set +e
+          uv run cdk diff --all 2>&1 | tee diff.log
+          DIFF_EXIT_CODE=$?
+          set -e
+
+          if [ $DIFF_EXIT_CODE -eq 1 ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          elif [ $DIFF_EXIT_CODE -eq 0 ]; then
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "CDK diff failed with exit code $DIFF_EXIT_CODE"
+            exit $DIFF_EXIT_CODE
+          fi
+        env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+
+      - name: CDK Deploy
+        id: deploy
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          uv run cdk deploy --all --require-approval never 2>&1 | tee deploy.log
+        env:
+          CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+          USE_SHARED_BOOTSTRAP: true
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}

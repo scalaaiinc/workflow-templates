@@ -1,0 +1,212 @@
+name: UAT ECR CDK Deploy
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+      aws_account:
+        required: false
+        type: string
+        default: "193044710768"
+      aws_region:
+        required: false        
+        type: string
+        default: "us-east-1"
+      environment:
+        required: false
+        type: string
+        default: "uat"
+      client:
+        required: false
+        type: string
+        default: "scala"
+      dockerfile_path:
+        required: false
+        type: string
+        default: "Dockerfile"
+      build_context:
+        required: false
+        type: string
+        default: "."
+      image_name:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      GITHUB_PAT:
+        required: true
+    outputs:
+      image_tag:
+        description: Built image tag for downstream deploy workflows.
+        value: ${{ jobs.uat-ecr-cdk-deploy.outputs.image_tag }}
+
+env:
+  CDK_BOOTSTRAP_ACCOUNT: "579107446826"
+
+jobs:
+  uat-ecr-cdk-deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.image-tags.outputs.service_tag_uat }}
+    steps:
+      - name: Setup shared CDK environment
+        uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@feature/CLOUD-39
+        with:
+          aws_region: ${{ inputs.aws_region }}
+          cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
+          github_pat: ${{ secrets.GITHUB_PAT }}
+          python_version: "3.12"
+          node_version: "22"
+          uv_version: "0.9.18"
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set repo directory
+        shell: bash
+        run: |
+          echo "REPO_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+      
+      - name: Create NPMRC with CodeArtifact auth
+        run: |
+          aws codeartifact login --tool npm --domain scala --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} --repository npm-packages --region ${{ inputs.aws_region }}
+          cp ~/.npmrc .npmrc
+          echo "✅ .npmrc created with CodeArtifact credentials"
+      
+      # We want to run uv sync before docker build b/c we use scripts to calculate versions 
+      - name: Install dependencies
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          echo "📦 Installing dependencies with uv..."
+          uv sync 
+          echo "✅ Dependencies installed"
+        env:
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+
+      - name: Setup QEMU for cross-platform builds
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set Docker image name
+        shell: bash
+        run: |
+          IMAGE_NAME="${{ inputs.image_name }}"
+          if [ -z "$IMAGE_NAME" ]; then
+            IMAGE_NAME="${{ inputs.service }}"
+          fi
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          echo "Using Docker image name: $IMAGE_NAME"
+
+      - name: Validate Docker build paths
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          if [ ! -f "${{ inputs.dockerfile_path }}" ]; then
+            echo "Dockerfile not found at: ${{ inputs.dockerfile_path }}"
+            echo "Repository root files:"
+            ls -la
+            exit 1
+          fi
+          if [ ! -d "${{ inputs.build_context }}" ]; then
+            echo "Build context directory not found: ${{ inputs.build_context }}"
+            exit 1
+          fi
+          echo "Using Dockerfile: ${{ inputs.dockerfile_path }}"
+          echo "Using build context: ${{ inputs.build_context }}"
+          
+      - name: Calculate and tag Docker image versions
+        id: image-tags
+        shell: bash   
+        run: |
+          cd "$REPO_DIR"
+
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          TARGET_VERSION=$(uv run python -c "import tomllib; from pathlib import Path; data = tomllib.loads(Path('pyproject.toml').read_text()); print(data['tool']['scala']['release']['target-version'])")
+          DOCKER_SAFE_VERSION=$(printf '%s' "$TARGET_VERSION" | sed 's/[^A-Za-z0-9_.-]/-/g')
+          BUILD_TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          ENV_TAG_PREFIX=$(printf '%s' "${{ inputs.environment }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+          SHA_TAG="sha-${GIT_COMMIT}"
+
+          if [ -z "$UAT_TAG" ]; then
+            UAT_TAG="${ENV_TAG_PREFIX}-${DOCKER_SAFE_VERSION}-${BUILD_TIMESTAMP}"
+          fi
+
+          RELEASE_TAG="$DOCKER_SAFE_VERSION"
+          SERVICE_TAG_SHA="${IMAGE_NAME}-${SHA_TAG}"
+          SERVICE_TAG_UAT="${IMAGE_NAME}-${UAT_TAG}"
+          SERVICE_TAG_RELEASE="${IMAGE_NAME}-${RELEASE_TAG}"
+
+          echo "GIT_COMMIT=$GIT_COMMIT" >> $GITHUB_ENV
+          echo "VERSION=$TARGET_VERSION" >> $GITHUB_ENV
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
+          echo "SHA_TAG=$SHA_TAG" >> $GITHUB_ENV
+          echo "UAT_TAG=$UAT_TAG" >> $GITHUB_ENV
+          echo "SERVICE_TAG_SHA=$SERVICE_TAG_SHA" >> $GITHUB_ENV
+          echo "SERVICE_TAG_UAT=$SERVICE_TAG_UAT" >> $GITHUB_ENV
+          echo "SERVICE_TAG_RELEASE=$SERVICE_TAG_RELEASE" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$SERVICE_TAG_UAT" >> $GITHUB_ENV
+
+          echo "version=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "uat_tag=$UAT_TAG" >> $GITHUB_OUTPUT
+          echo "service_tag_uat=$SERVICE_TAG_UAT" >> $GITHUB_OUTPUT
+
+          echo "Prepared Docker image tags:"
+          echo "  - $IMAGE_NAME:$SHA_TAG"
+          echo "  - $IMAGE_NAME:$UAT_TAG"
+          echo "Reserved release promotion tag: $SERVICE_TAG_RELEASE"
+      
+      - name: Push Docker image to ECR
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+
+          echo "🔐 Ensuring ECR authentication for push..."
+          if aws sts assume-role \
+            --role-arn "arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-image-publishing-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}" \
+            --role-session-name "github-cdk-ecr-push-${{ github.run_id }}" > /tmp/assume-role-push.json 2>&1; then
+            AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' /tmp/assume-role-push.json)
+            AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' /tmp/assume-role-push.json)
+            AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' /tmp/assume-role-push.json)
+            export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            rm -f /tmp/assume-role-push.json
+            echo "✅ Using assumed role credentials for ECR push"
+          else
+            echo "⚠️  Could not assume shared-services role; using current credentials"
+          fi
+
+          aws ecr get-login-password --region "${{ inputs.aws_region }}" | \
+            docker login --username AWS --password-stdin "${{ env.CDK_BOOTSTRAP_ACCOUNT }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com"
+
+          ECR_REPO_PRIMARY="${{ env.CDK_BOOTSTRAP_ACCOUNT }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/cdk-hnb659fds-central-container-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}"
+
+          cp ~/.npmrc .npmrc
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --secret id=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD,env=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD \
+            -f "${{ inputs.dockerfile_path }}" \
+            --push \
+            -t "$ECR_REPO_PRIMARY:$SERVICE_TAG_SHA" \
+            -t "$ECR_REPO_PRIMARY:$SERVICE_TAG_UAT" \
+            "${{ inputs.build_context }}"
+
+          # Avoid leaking temporary role credentials into subsequent steps.
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+          echo "Pushed multi-arch Docker image to ECR repos:"
+          echo "  - $ECR_REPO_PRIMARY:$SERVICE_TAG_SHA"
+          echo "  - $ECR_REPO_PRIMARY:$SERVICE_TAG_UAT"
+          echo "Release promotion target: $ECR_REPO_PRIMARY:$SERVICE_TAG_RELEASE"
+      
+
+      

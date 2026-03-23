@@ -1,0 +1,76 @@
+name: Setup CDK Environment
+description: Configure AWS CodeArtifact access and install Python, Node, uv, and CDK CLI.
+
+inputs:
+  aws_region:
+    description: AWS region used for CodeArtifact and role assumption.
+    required: true
+  cdk_bootstrap_account:
+    description: Shared bootstrap account that hosts CodeArtifact.
+    required: true
+  github_pat:
+    description: Optional PAT used by downstream dependency resolution.
+    required: false
+    default: ""
+  python_version:
+    description: Python version to install.
+    required: false
+    default: "3.12"
+  node_version:
+    description: Node.js version to install.
+    required: false
+    default: "20"
+  uv_version:
+    description: uv version to install.
+    required: false
+    default: "0.9.18"
+
+runs:
+  using: composite
+  steps:
+    - name: Configure AWS credentials for CodeArtifact
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ inputs.cdk_bootstrap_account }}:role/cdk-hnb659fds-github-role-${{ inputs.cdk_bootstrap_account }}-${{ inputs.aws_region }}
+        aws-region: ${{ inputs.aws_region }}
+        role-session-name: GHA-client-config-deploy-${{ github.run_id }}
+
+    - name: Get CodeArtifact token
+      shell: bash
+      run: |
+        TOKEN=$(aws codeartifact get-authorization-token \
+          --domain scala \
+          --domain-owner "${{ inputs.cdk_bootstrap_account }}" \
+          --region "${{ inputs.aws_region }}" \
+          --query authorizationToken \
+          --output text)
+        echo "::add-mask::$TOKEN"
+        echo "UV_INDEX_SCALA_CODEARTIFACT_PASSWORD=$TOKEN" >> "$GITHUB_ENV"
+        echo "UV_INDEX_SCALA_CODEARTIFACT_USERNAME=aws" >> "$GITHUB_ENV"
+        echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+    - name: Set GitHub PAT for dependency resolution
+      if: ${{ inputs.github_pat != '' }}
+      shell: bash
+      run: |
+        echo "GITHUB_PAT=${{ inputs.github_pat }}" >> "$GITHUB_ENV"
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: ${{ inputs.uv_version }}
+        enable-cache: true
+
+    - name: Install AWS CDK CLI
+      shell: bash
+      run: npm install -g aws-cdk
