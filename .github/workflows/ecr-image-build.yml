@@ -89,6 +89,7 @@ jobs:
         env:
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
 
       - name: Setup QEMU for cross-platform builds
         uses: docker/setup-qemu-action@v3
@@ -194,7 +195,7 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --secret id=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD,env=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD \
-            --secret id=github_pat,env=${{ secrets.GITHUB_PAT }} \
+            --secret id=github_pat,env=GITHUB_PAT \
             -f "${{ inputs.dockerfile_path }}" \
             --push \
             -t "$ECR_REPO_PRIMARY:$SERVICE_TAG_SHA" \
