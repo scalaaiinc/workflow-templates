@@ -31,7 +31,7 @@ on:
       config_repo_ref:
         required: false
         type: string
-        default: "feature/CLOUD-36"
+        default: "main"
     secrets:
       GITHUB_PAT:
         required: false
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup shared CDK environment
-        uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@feature/CLOUD-39
+        uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@main
         with:
           aws_region: ${{ inputs.aws_region }}
           cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
