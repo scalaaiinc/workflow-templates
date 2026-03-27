@@ -85,7 +85,6 @@ jobs:
         env:
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
 
       - name: Setup QEMU for cross-platform builds
         uses: docker/setup-qemu-action@v3
@@ -159,6 +158,10 @@ jobs:
           echo "Reserved release promotion tag: $SERVICE_TAG_RELEASE"
       
       - name: Push Docker image to ECR
+        env:
+          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
         shell: bash
         run: |
           cd "$REPO_DIR"
