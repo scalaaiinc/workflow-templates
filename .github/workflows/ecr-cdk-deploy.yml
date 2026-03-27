@@ -52,6 +52,10 @@ jobs:
           cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
           github_pat: ${{ secrets.GITHUB_PAT }}
 
+      - name: Configure pip for AWS CodeArtifact
+        run: |
+          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain scala --domain-owner 579107446826 --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
+
       - name: Checkout repo
         uses: actions/checkout@v4
 
