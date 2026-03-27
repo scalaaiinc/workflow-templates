@@ -161,7 +161,7 @@ jobs:
         env:
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
-          GITHUB_PAT: ${{ secrets.SCALA_ORG_RO_PAT }}
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
         shell: bash
         run: |
           cd "$REPO_DIR"
