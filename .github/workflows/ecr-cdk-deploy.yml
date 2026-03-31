@@ -93,7 +93,7 @@ jobs:
             cp "$SRC_CONFIG" "$DEST_CONFIG"
           fi
 
-          # Resolve defaults: merge environments.default.{service} as base into environments.{env}.{service}
+          # Resolve defaults: merge environments.default.{service} as base into environments.{env}.{service}, then remove default
           ENV_KEY="${{ inputs.client }}-${{ inputs.environment }}"
           SERVICE="${{ inputs.service }}"
           jq --arg env "$ENV_KEY" --arg svc "$SERVICE" '
@@ -102,6 +102,7 @@ jobs:
             elif .environments.default[$svc] then
               .environments[$env][$svc] = .environments.default[$svc]
             else . end
+            | del(.environments.default)
           ' "$DEST_CONFIG" > /tmp/resolved-context.json
           mv /tmp/resolved-context.json "$DEST_CONFIG"
 
