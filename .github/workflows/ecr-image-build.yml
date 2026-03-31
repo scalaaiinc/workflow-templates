@@ -1,4 +1,4 @@
-name: UAT ECR CDK Deploy
+name: UAT ECR Image Build
 permissions:
   id-token: write
   contents: read
