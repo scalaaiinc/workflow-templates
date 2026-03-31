@@ -93,7 +93,20 @@ jobs:
             cp "$SRC_CONFIG" "$DEST_CONFIG"
           fi
 
+          # Resolve defaults: merge environments.default.{service} as base into environments.{env}.{service}
+          ENV_KEY="${{ inputs.client }}-${{ inputs.environment }}"
+          SERVICE="${{ inputs.service }}"
+          jq --arg env "$ENV_KEY" --arg svc "$SERVICE" '
+            if .environments.default[$svc] and .environments[$env][$svc] then
+              .environments[$env][$svc] = (.environments.default[$svc] * .environments[$env][$svc])
+            elif .environments.default[$svc] then
+              .environments[$env][$svc] = .environments.default[$svc]
+            else . end
+          ' "$DEST_CONFIG" > /tmp/resolved-context.json
+          mv /tmp/resolved-context.json "$DEST_CONFIG"
+
           echo "📄 Merged cdk.context.json placed at: $DEST_CONFIG"
+          echo "🔑 Resolved defaults for service '$SERVICE' into environment '$ENV_KEY'"
           echo "--- Merged config contents ---"
           cat "$DEST_CONFIG"
           echo "--- End of merged config ---"
