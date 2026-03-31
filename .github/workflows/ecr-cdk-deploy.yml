@@ -67,7 +67,7 @@ jobs:
           path: config-repo
           token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
-      - name: Copy client context config to service repo root
+      - name: Merge client context config with service repo context
         shell: bash
         run: |
           REPO_DIR="$GITHUB_WORKSPACE"
@@ -84,10 +84,17 @@ jobs:
             exit 1
           fi
 
-          cp "$SRC_CONFIG" "$DEST_CONFIG"
+          if [ -f "$DEST_CONFIG" ]; then
+            echo "Merging: service repo cdk.context.json + client config (client config wins)"
+            jq -s '.[0] * .[1]' "$DEST_CONFIG" "$SRC_CONFIG" > /tmp/merged-context.json
+            mv /tmp/merged-context.json "$DEST_CONFIG"
+          else
+            echo "No existing cdk.context.json in service repo; using client config as-is"
+            cp "$SRC_CONFIG" "$DEST_CONFIG"
+          fi
+
           echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
           echo "IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
-          echo "Copied $SRC_CONFIG to $DEST_CONFIG"
           echo "Using IMAGE_TAG=${{ inputs.image_tag }}"
 
       - name: Create .npmrc with CodeArtifact auth
