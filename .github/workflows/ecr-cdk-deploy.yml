@@ -93,6 +93,11 @@ jobs:
             cp "$SRC_CONFIG" "$DEST_CONFIG"
           fi
 
+          echo "📄 Merged cdk.context.json placed at: $DEST_CONFIG"
+          echo "--- Merged config contents ---"
+          cat "$DEST_CONFIG"
+          echo "--- End of merged config ---"
+
           echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
           echo "IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
           echo "Using IMAGE_TAG=${{ inputs.image_tag }}"
