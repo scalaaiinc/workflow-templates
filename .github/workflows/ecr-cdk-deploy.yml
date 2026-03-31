@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: "main"
+      stack:
+        required: false
+        type: string
+        default: ""
+        description: "Deploy a specific CDK stack (with --exclusively). If empty, deploys all stacks."
     secrets:
       GITHUB_PAT:
         required: false
@@ -142,7 +147,11 @@ jobs:
         shell: bash
         run: |
           cd "$REPO_DIR"
-          uv run cdk synth --all 2>&1 | tee synth.log
+          if [ -n "${{ inputs.stack }}" ]; then
+            uv run cdk synth "${{ inputs.stack }}" --exclusively 2>&1 | tee synth.log
+          else
+            uv run cdk synth --all 2>&1 | tee synth.log
+          fi
         env:
           CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
           USE_SHARED_BOOTSTRAP: true
@@ -169,7 +178,11 @@ jobs:
         run: |
           cd "$REPO_DIR"
           set +e
-          uv run cdk diff --all 2>&1 | tee diff.log
+          if [ -n "${{ inputs.stack }}" ]; then
+            uv run cdk diff "${{ inputs.stack }}" --exclusively 2>&1 | tee diff.log
+          else
+            uv run cdk diff --all 2>&1 | tee diff.log
+          fi
           DIFF_EXIT_CODE=$?
           set -e
 
@@ -193,7 +206,11 @@ jobs:
         shell: bash
         run: |
           cd "$REPO_DIR"
-          uv run cdk deploy --all --require-approval never 2>&1 | tee deploy.log
+          if [ -n "${{ inputs.stack }}" ]; then
+            uv run cdk deploy "${{ inputs.stack }}" --exclusively --require-approval never 2>&1 | tee deploy.log
+          else
+            uv run cdk deploy --all --require-approval never 2>&1 | tee deploy.log
+          fi
         env:
           CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
           USE_SHARED_BOOTSTRAP: true
