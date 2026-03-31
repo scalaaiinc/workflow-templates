@@ -33,6 +33,14 @@ on:
         required: false
         type: string
         default: ""
+      arch:
+        required: false
+        type: string
+        default: "linux/amd64,linux/arm64"
+      runner:
+        required: false
+        type: string
+        default: "ubuntu-latest"
     secrets:
       GITHUB_PAT:
         required: true
@@ -46,7 +54,7 @@ env:
 
 jobs:
   uat-ecr-cdk-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     outputs:
       image_tag: ${{ steps.image-tags.outputs.service_tag_uat }}
     steps:
@@ -187,7 +195,7 @@ jobs:
 
           cp ~/.npmrc .npmrc
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform "${{ inputs.arch }}" \
             --secret id=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD,env=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD \
             --secret id=github_pat,env=GITHUB_PAT \
             --push \
