@@ -62,7 +62,16 @@ jobs:
           aws s3 cp "s3://${SPA_BUCKET}/${ARTIFACT_KEY}" /tmp/spa-release.zip
           unzip -q /tmp/spa-release.zip -d /tmp/spa-release
           rm -f /tmp/spa-release.zip
-          echo "SPA_LOCAL_FOLDER=/tmp/spa-release" >> "$GITHUB_ENV"
+
+          # Auto-detect content root (index.html may be nested, e.g. client/index.html)
+          INDEX_PATH=$(find /tmp/spa-release -name index.html -type f | head -n 1)
+          if [ -z "$INDEX_PATH" ]; then
+            echo "::error::index.html not found in the release artifact"
+            exit 1
+          fi
+          CONTENT_ROOT=$(dirname "$INDEX_PATH")
+          echo "Detected content root: $CONTENT_ROOT"
+          echo "SPA_LOCAL_FOLDER=$CONTENT_ROOT" >> "$GITHUB_ENV"
 
       - name: Set deploy variables
         shell: bash

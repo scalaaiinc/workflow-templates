@@ -130,7 +130,11 @@ jobs:
           CACHE_BUST=$(head -c 4 /dev/urandom | xxd -p)
           RELEASE_FILENAME="${TIMESTAMP}-${CACHE_BUST}-${GIT_HASH}.zip"
           RELEASE_KEY="internal-releases/${RELEASE_FILENAME}"
-          (cd "$BUILD_DIRECTORY" && zip -r /tmp/spa-release.zip .)
+          # Package under voyager-spa/ so the extracted folder has a predictable name
+          mkdir -p /tmp/spa-package
+          cp -r "$BUILD_DIRECTORY"/. /tmp/spa-package/voyager-spa
+          (cd /tmp/spa-package && zip -r /tmp/spa-release.zip voyager-spa)
+          rm -rf /tmp/spa-package
           aws s3 cp /tmp/spa-release.zip "s3://${SPA_BUCKET}/${RELEASE_KEY}"
           rm -f /tmp/spa-release.zip
           echo "release_artifact=${RELEASE_FILENAME}" >> "$GITHUB_OUTPUT"
