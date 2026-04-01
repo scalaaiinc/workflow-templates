@@ -57,83 +57,31 @@ jobs:
           cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
           github_pat: ${{ secrets.GITHUB_PAT }}
 
-      - name: Configure pip for AWS CodeArtifact
-        run: |
-          echo "AWS_CODEARTIFACT_AUTHORIZATION_TOKEN=$(aws codeartifact get-authorization-token --domain scala --domain-owner 579107446826 --query authorizationToken --region us-east-1 --output text)" >> $GITHUB_ENV
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Checkout config repo
-        uses: actions/checkout@v4
+      - name: Merge client context config
+        uses: scalaaiinc/workflow-templates/.github/actions/merge-client-config@main
         with:
-          repository: scalaaiinc/client-configs-aws-cdk
-          ref: ${{ inputs.config_repo_ref }}
-          path: config-repo
+          config_repo_ref: ${{ inputs.config_repo_ref }}
+          client: ${{ inputs.client }}
+          environment: ${{ inputs.environment }}
+          service: ${{ inputs.service }}
           token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
-      - name: Merge client context config with service repo context
+      - name: Set deploy variables
         shell: bash
         run: |
-          REPO_DIR="$GITHUB_WORKSPACE"
-          CONFIG_DIR="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}"
-          DEST_CONFIG="$REPO_DIR/cdk.context.json"
-
-          if [ -f "$CONFIG_DIR/cdk.context.json" ]; then
-            SRC_CONFIG="$CONFIG_DIR/cdk.context.json"
-          elif [ -f "$CONFIG_DIR/context.json" ]; then
-            SRC_CONFIG="$CONFIG_DIR/context.json"
-          else
-            echo "Missing config file in $CONFIG_DIR (tried cdk.context.json and context.json)"
-            find "$GITHUB_WORKSPACE/config-repo" -maxdepth 4 -type f | sort || true
-            exit 1
-          fi
-
-          if [ -f "$DEST_CONFIG" ]; then
-            echo "Merging: service repo cdk.context.json + client config (client config wins)"
-            jq -s '.[0] * .[1]' "$DEST_CONFIG" "$SRC_CONFIG" > /tmp/merged-context.json
-            mv /tmp/merged-context.json "$DEST_CONFIG"
-          else
-            echo "No existing cdk.context.json in service repo; using client config as-is"
-            cp "$SRC_CONFIG" "$DEST_CONFIG"
-          fi
-
-          # Resolve defaults: merge environments.default.{service} as base into environments.{env}.{service}, then remove default
-          ENV_KEY="${{ inputs.client }}-${{ inputs.environment }}"
-          SERVICE="${{ inputs.service }}"
-          jq --arg env "$ENV_KEY" --arg svc "$SERVICE" '
-            if .environments.default[$svc] and .environments[$env][$svc] then
-              .environments[$env][$svc] = (.environments.default[$svc] * .environments[$env][$svc])
-            elif .environments.default[$svc] then
-              .environments[$env][$svc] = .environments.default[$svc]
-            else . end
-            | del(.environments.default)
-          ' "$DEST_CONFIG" > /tmp/resolved-context.json
-          mv /tmp/resolved-context.json "$DEST_CONFIG"
-
-          echo "📄 Merged cdk.context.json placed at: $DEST_CONFIG"
-          echo "🔑 Resolved defaults for service '$SERVICE' into environment '$ENV_KEY'"
-          echo "--- Merged config contents ---"
-          cat "$DEST_CONFIG"
-          echo "--- End of merged config ---"
-
-          echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
+          echo "REPO_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
           echo "IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
           echo "Using IMAGE_TAG=${{ inputs.image_tag }}"
 
-      - name: Create .npmrc with CodeArtifact auth
-        run: |
-          aws codeartifact login --tool npm --domain scala --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} --repository npm-packages --region ${{ inputs.aws_region }}
-          cp ~/.npmrc .npmrc
-
       - name: Install dependencies
-        shell: bash
-        run: |
-          cd "$REPO_DIR"
-          uv sync
-        env:
-          UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
-          UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+        uses: scalaaiinc/workflow-templates/.github/actions/install-deps@main
+        with:
+          cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
+          aws_region: ${{ inputs.aws_region }}
+          package_manager: uv
 
       - name: Configure AWS credentials for deployment account
         uses: aws-actions/configure-aws-credentials@v4

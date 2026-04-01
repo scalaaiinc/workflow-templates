@@ -1,0 +1,137 @@
+name: Node.js React SPA Deploy
+
+on:
+  workflow_call:
+    inputs:
+      cdk_bootstrap_account:
+        required: false
+        type: string
+        default: "579107446826"
+      aws_account:
+        required: false
+        type: string
+        default: "193044710768"
+      aws_region:
+        required: false
+        type: string
+        default: "us-east-1"
+      environment:
+        required: false
+        type: string
+        default: "uat"
+      client:
+        required: false
+        type: string
+        default: "scala"
+      spa_bucket:
+        required: false
+        type: string
+        default: "scala-uat-193044710768-voyager-spa"
+      cloudfront_distribution_id:
+        required: false
+        type: string
+        default: ""
+      config_repo_ref:
+        required: false
+        type: string
+        default: "main"
+      node_version:
+        required: false
+        type: string
+        default: "22"
+      build_directory:
+        required: false
+        type: string
+        default: "build"
+    outputs:
+      release_artifact:
+        description: "Filename of the uploaded release zip (e.g. 20260401T120000Z-a1b2c3d4-abc1234.zip)"
+        value: ${{ jobs.build-spa.outputs.release_artifact }}
+    secrets:
+      GITHUB_PAT:
+        required: false
+      SCALA_ORG_RO_PAT:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  CDK_BOOTSTRAP_ACCOUNT: ${{ inputs.cdk_bootstrap_account }}
+  AWS_ACCOUNT: ${{ inputs.aws_account }}
+  AWS_REGION: ${{ inputs.aws_region }}
+  ENVIRONMENT: ${{ inputs.environment }}
+  CLIENT: ${{ inputs.client }}
+  SPA_BUCKET: ${{ inputs.spa_bucket }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id }}
+  CONFIG_REPO_REF: ${{ inputs.config_repo_ref }}
+  NODE_VERSION: ${{ inputs.node_version }}
+  BUILD_DIRECTORY: ${{ inputs.build_directory }}
+
+jobs:
+  build-spa:
+    runs-on: ubuntu-latest
+    outputs:
+      release_artifact: ${{ steps.upload_release.outputs.release_artifact }}
+
+    steps:
+      - name: Setup shared CDK environment
+        uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@main
+        with:
+          aws_region: ${{ env.AWS_REGION }}
+          cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
+          github_pat: ${{ secrets.GITHUB_PAT }}
+
+      - name: Checkout service repository
+        uses: actions/checkout@v4
+
+      - name: Set repository directory
+        shell: bash
+        run: |
+          echo "REPO_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Merge client context config
+        uses: scalaaiinc/workflow-templates/.github/actions/merge-client-config@main
+        with:
+          config_repo_ref: ${{ env.CONFIG_REPO_REF }}
+          client: ${{ env.CLIENT }}
+          environment: ${{ env.ENVIRONMENT }}
+          service: ${{ github.event.repository.name }}
+          token: ${{ secrets.SCALA_ORG_RO_PAT }}
+
+      - name: Install dependencies
+        uses: scalaaiinc/workflow-templates/.github/actions/install-deps@main
+        with:
+          cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
+          aws_region: ${{ env.AWS_REGION }}
+          node_version: ${{ env.NODE_VERSION }}
+
+      - name: Configure AWS credentials for deployment account
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.AWS_ACCOUNT }}-${{ env.AWS_REGION }}
+          role-session-name: github-actions-spa-${{ env.ENVIRONMENT }}-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build SPA
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          npm run build
+
+      - name: Upload build release artifact
+        id: upload_release
+        shell: bash
+        run: |
+          cd "$REPO_DIR"
+          GIT_HASH=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          CACHE_BUST=$(head -c 4 /dev/urandom | xxd -p)
+          RELEASE_FILENAME="${TIMESTAMP}-${CACHE_BUST}-${GIT_HASH}.zip"
+          RELEASE_KEY="internal-releases/${RELEASE_FILENAME}"
+          (cd "$BUILD_DIRECTORY" && zip -r /tmp/spa-release.zip .)
+          aws s3 cp /tmp/spa-release.zip "s3://${SPA_BUCKET}/${RELEASE_KEY}"
+          rm -f /tmp/spa-release.zip
+          echo "release_artifact=${RELEASE_FILENAME}" >> "$GITHUB_OUTPUT"
+          echo "✅ Release artifact uploaded to s3://${SPA_BUCKET}/${RELEASE_KEY}"
