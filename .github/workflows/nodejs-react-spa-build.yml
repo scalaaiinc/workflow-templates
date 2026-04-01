@@ -92,7 +92,7 @@ jobs:
           echo "REPO_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Merge client context config
-        uses: scalaaiinc/workflow-templates/.github/actions/merge-client-config@main
+        uses: scalaaiinc/workflow-templates/.github/actions/merge-client-config@feature/VOYAG-321
         with:
           config_repo_ref: ${{ env.CONFIG_REPO_REF }}
           client: ${{ env.CLIENT }}
@@ -101,7 +101,7 @@ jobs:
           token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
       - name: Install dependencies
-        uses: scalaaiinc/workflow-templates/.github/actions/install-deps@main
+        uses: scalaaiinc/workflow-templates/.github/actions/install-deps@feature/VOYAG-321
         with:
           cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
           aws_region: ${{ env.AWS_REGION }}
