@@ -1,0 +1,58 @@
+name: Install Dependencies
+description: Create .npmrc with CodeArtifact auth and install project dependencies (npm or uv).
+
+inputs:
+  cdk_bootstrap_account:
+    description: AWS account that owns the CodeArtifact domain.
+    required: false
+    default: "579107446826"
+  aws_region:
+    description: AWS region for CodeArtifact.
+    required: false
+    default: "us-east-1"
+  package_manager:
+    description: "Package manager to use: 'npm' or 'uv'."
+    required: false
+    default: "npm"
+  node_version:
+    description: "Node.js version to install. If empty, uses the version already available from setup-cdk-env."
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      if: ${{ inputs.node_version != '' }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: ${{ inputs.package_manager == 'npm' && 'npm' || '' }}
+
+    - name: Create .npmrc with CodeArtifact auth
+      shell: bash
+      run: |
+        aws codeartifact login --tool npm \
+          --domain scala \
+          --domain-owner "${{ inputs.cdk_bootstrap_account }}" \
+          --repository npm-packages \
+          --region "${{ inputs.aws_region }}"
+        cp ~/.npmrc .npmrc
+
+    - name: Install dependencies (npm)
+      if: ${{ inputs.package_manager == 'npm' }}
+      shell: bash
+      run: |
+        if [ -f "package-lock.json" ]; then
+          npm ci
+        else
+          npm install
+        fi
+
+    - name: Install dependencies (uv)
+      if: ${{ inputs.package_manager == 'uv' }}
+      shell: bash
+      run: uv sync
+      env:
+        UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+        UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}

@@ -1,0 +1,145 @@
+name: Node.js SPA Deploy
+
+on:
+  workflow_call:
+    inputs:
+      release_artifact:
+        required: true
+        type: string
+        description: "Zip filename to deploy (e.g. 20260401T120000Z-a1b2c3d4-abc1234.zip)"
+      archive_path:
+        required: false
+        type: string
+        default: "releases"
+        description: "S3 prefix where the release artifact lives (e.g. internal-releases, releases)"
+      aws_account:
+        required: false
+        type: string
+        default: "193044710768"
+      aws_region:
+        required: false
+        type: string
+        default: "us-east-1"
+      spa_bucket:
+        required: false
+        type: string
+        default: "scala-uat-193044710768-voyager-spa"
+      cloudfront_distribution_id:
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_ACCOUNT: ${{ inputs.aws_account }}
+  AWS_REGION: ${{ inputs.aws_region }}
+  SPA_BUCKET: ${{ inputs.spa_bucket }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id }}
+  ARCHIVE_PATH: ${{ inputs.archive_path }}
+  RELEASE_ARTIFACT: ${{ inputs.release_artifact }}
+
+jobs:
+  deploy-spa:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.AWS_ACCOUNT }}-${{ env.AWS_REGION }}
+          role-session-name: github-actions-spa-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download and extract release artifact
+        shell: bash
+        run: |
+          ARTIFACT_KEY="${ARCHIVE_PATH%/}/${RELEASE_ARTIFACT}"
+          echo "📥 Downloading s3://${SPA_BUCKET}/${ARTIFACT_KEY}"
+          mkdir -p /tmp/spa-release
+          aws s3 cp "s3://${SPA_BUCKET}/${ARTIFACT_KEY}" /tmp/spa-release.zip
+          unzip -q /tmp/spa-release.zip -d /tmp/spa-release
+          rm -f /tmp/spa-release.zip
+
+          # Auto-detect content root (index.html may be nested, e.g. client/index.html)
+          INDEX_PATH=$(find /tmp/spa-release -name index.html -type f | head -n 1)
+          if [ -z "$INDEX_PATH" ]; then
+            echo "::error::index.html not found in the release artifact"
+            exit 1
+          fi
+          CONTENT_ROOT=$(dirname "$INDEX_PATH")
+          echo "Detected content root: $CONTENT_ROOT"
+          echo "SPA_LOCAL_FOLDER=$CONTENT_ROOT" >> "$GITHUB_ENV"
+
+      - name: Set deploy variables
+        shell: bash
+        run: |
+          echo "LIVE_PREFIX=live/" >> "$GITHUB_ENV"
+          echo "DEPLOY_TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
+
+      - name: Archive current live contents
+        shell: bash
+        run: |
+          ARCHIVE_KEY="archive/${DEPLOY_TIMESTAMP}-${RELEASE_ARTIFACT}"
+          LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$LIVE_COUNT" -gt "0" ]; then
+            mkdir -p /tmp/spa-archive
+            aws s3 sync "s3://${SPA_BUCKET}/${LIVE_PREFIX}" /tmp/spa-archive/ --quiet
+            (cd /tmp/spa-archive && zip -r /tmp/spa-backup.zip .)
+            aws s3 cp /tmp/spa-backup.zip "s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
+            rm -rf /tmp/spa-archive /tmp/spa-backup.zip
+            echo "✅ Archived to s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
+          else
+            echo "⚠️  No existing live content to archive"
+          fi
+
+      - name: Upload assets (excluding index.html)
+        shell: bash
+        run: |
+          aws s3 sync "$SPA_LOCAL_FOLDER/" "s3://${SPA_BUCKET}/${LIVE_PREFIX}" \
+            --exclude "index.html" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Upload index.html (atomic switchover)
+        shell: bash
+        run: |
+          aws s3 cp "$SPA_LOCAL_FOLDER/index.html" "s3://${SPA_BUCKET}/${LIVE_PREFIX}index.html" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Remove orphaned assets
+        shell: bash
+        run: |
+          aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive \
+            | awk '{print $4}' \
+            | sed "s|^${LIVE_PREFIX}||" \
+            | while read -r remote_key; do
+                if [ -n "$remote_key" ] && [ ! -f "$SPA_LOCAL_FOLDER/$remote_key" ]; then
+                  aws s3 rm "s3://${SPA_BUCKET}/${LIVE_PREFIX}${remote_key}"
+                fi
+              done
+
+      - name: Invalidate CloudFront cache
+        shell: bash
+        run: |
+          RESOLVED_DISTRIBUTION_ID="$CLOUDFRONT_DISTRIBUTION_ID"
+
+          if [ -z "$RESOLVED_DISTRIBUTION_ID" ]; then
+            ORIGIN_DOMAIN_A="${SPA_BUCKET}.s3.amazonaws.com"
+            ORIGIN_DOMAIN_B="${SPA_BUCKET}.s3.${AWS_REGION}.amazonaws.com"
+
+            RESOLVED_DISTRIBUTION_ID=$(aws cloudfront list-distributions --output json | jq -r \
+              --arg domainA "$ORIGIN_DOMAIN_A" \
+              --arg domainB "$ORIGIN_DOMAIN_B" \
+              '.DistributionList.Items[]? | select(any(.Origins.Items[]?; .DomainName == $domainA or .DomainName == $domainB)) | .Id' | head -n 1)
+
+            if [ -z "$RESOLVED_DISTRIBUTION_ID" ] || [ "$RESOLVED_DISTRIBUTION_ID" = "null" ]; then
+              echo "No CloudFront distribution found for SPA bucket origin ${SPA_BUCKET}. Skipping invalidation."
+              exit 0
+            else
+              echo "Resolved CloudFront distribution ID: $RESOLVED_DISTRIBUTION_ID"
+            fi
+          fi
+
+          aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*"
