@@ -1,0 +1,79 @@
+name: Merge Client Config
+description: Checkout client config repo and merge cdk.context.json with the service repo context.
+
+inputs:
+  config_repo_ref:
+    description: Branch or tag of the client-configs-aws-cdk repo.
+    required: false
+    default: "main"
+  client:
+    description: Client name (e.g. scala).
+    required: true
+  environment:
+    description: Deployment environment (e.g. uat).
+    required: true
+  service:
+    description: Service name for default config resolution.
+    required: true
+  token:
+    description: GitHub PAT with access to the config repo.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout config repo
+      uses: actions/checkout@v4
+      with:
+        repository: scalaaiinc/client-configs-aws-cdk
+        ref: ${{ inputs.config_repo_ref }}
+        path: config-repo
+        token: ${{ inputs.token }}
+
+    - name: Merge client context config
+      shell: bash
+      run: |
+        CONFIG_DIR="$GITHUB_WORKSPACE/config-repo/clients/${{ inputs.client }}/${{ inputs.environment }}"
+        DEST_CONFIG="$GITHUB_WORKSPACE/cdk.context.json"
+
+        if [ -f "$CONFIG_DIR/cdk.context.json" ]; then
+          SRC_CONFIG="$CONFIG_DIR/cdk.context.json"
+        elif [ -f "$CONFIG_DIR/context.json" ]; then
+          SRC_CONFIG="$CONFIG_DIR/context.json"
+        else
+          echo "Missing config file in $CONFIG_DIR (tried cdk.context.json and context.json)"
+          find "$GITHUB_WORKSPACE/config-repo" -maxdepth 4 -type f | sort || true
+          exit 1
+        fi
+
+        if [ -f "$DEST_CONFIG" ]; then
+          echo "Merging: service repo cdk.context.json + client config (client config wins)"
+          jq -s '.[0] * .[1]' "$DEST_CONFIG" "$SRC_CONFIG" > /tmp/merged-context.json
+          mv /tmp/merged-context.json "$DEST_CONFIG"
+        else
+          echo "No existing cdk.context.json in service repo; using client config as-is"
+          cp "$SRC_CONFIG" "$DEST_CONFIG"
+        fi
+
+    - name: Resolve default config
+      shell: bash
+      run: |
+        DEST_CONFIG="$GITHUB_WORKSPACE/cdk.context.json"
+        ENV_KEY="${{ inputs.client }}-${{ inputs.environment }}"
+        SERVICE="${{ inputs.service }}"
+
+        jq --arg env "$ENV_KEY" --arg svc "$SERVICE" '
+          if .environments.default[$svc] and .environments[$env][$svc] then
+            .environments[$env][$svc] = (.environments.default[$svc] * .environments[$env][$svc])
+          elif .environments.default[$svc] then
+            .environments[$env][$svc] = .environments.default[$svc]
+          else . end
+          | del(.environments.default)
+        ' "$DEST_CONFIG" > /tmp/resolved-context.json
+        mv /tmp/resolved-context.json "$DEST_CONFIG"
+
+        echo "📄 Merged cdk.context.json placed at: $DEST_CONFIG"
+        echo "🔑 Resolved defaults for service '$SERVICE' into environment '$ENV_KEY'"
+        echo "--- Merged config contents ---"
+        cat "$DEST_CONFIG"
+        echo "--- End of merged config ---"
