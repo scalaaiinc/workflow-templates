@@ -1,0 +1,176 @@
+name: ECR Release Promote
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "Service / image name (e.g. voyager-api)."
+        required: true
+        type: string
+      version:
+        description: "Release version string."
+        required: true
+        type: string
+      docker_safe_version:
+        description: "Docker-safe version string."
+        required: true
+        type: string
+      image_digest:
+        description: "ECR image digest to promote."
+        required: true
+        type: string
+      git_commit:
+        description: "Short git commit SHA the image was built from."
+        required: true
+        type: string
+      uat_tag:
+        description: "The UAT tag being promoted."
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region for ECR."
+        required: false
+        type: string
+        default: "us-east-1"
+      cdk_bootstrap_account:
+        description: "Shared bootstrap account that hosts the central ECR repo."
+        required: false
+        type: string
+        default: "579107446826"
+    secrets:
+      GITHUB_PAT:
+        required: true
+    outputs:
+      release_tag:
+        description: "The release version tag applied to the ECR image."
+        value: ${{ jobs.promote.outputs.release_tag }}
+      release_timestamp_tag:
+        description: "The timestamped release tag."
+        value: ${{ jobs.promote.outputs.release_timestamp_tag }}
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  CDK_BOOTSTRAP_ACCOUNT: ${{ inputs.cdk_bootstrap_account }}
+  AWS_REGION: ${{ inputs.aws_region }}
+  ECR_REPO: "cdk-hnb659fds-central-container-${{ inputs.cdk_bootstrap_account }}-${{ inputs.aws_region }}"
+  ECR_REGISTRY: "${{ inputs.cdk_bootstrap_account }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com"
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.retag.outputs.release_tag }}
+      release_timestamp_tag: ${{ steps.retag.outputs.release_timestamp_tag }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ env.AWS_REGION }}
+          role-session-name: github-ecr-promote-release-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authenticate with ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "$AWS_REGION" | \
+            docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: Fetch image manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=$(aws ecr batch-get-image \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --image-ids imageDigest="${{ inputs.image_digest }}" \
+            --query 'images[0].imageManifest' \
+            --output text)
+
+          MANIFEST_FILE="/tmp/ecr-manifest-${{ github.run_id }}.json"
+          printf '%s' "$MANIFEST" > "$MANIFEST_FILE"
+          echo "manifest_file=$MANIFEST_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Retag image with release and timestamp tags
+        id: retag
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="${{ inputs.service }}"
+          DOCKER_SAFE_VERSION="${{ inputs.docker_safe_version }}"
+          MANIFEST_FILE="${{ steps.manifest.outputs.manifest_file }}"
+          RELEASE_TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+
+          RELEASE_TAG="${SERVICE}-${DOCKER_SAFE_VERSION}"
+          RELEASE_TS_TAG="${SERVICE}-release-${DOCKER_SAFE_VERSION}-${RELEASE_TIMESTAMP}"
+
+          echo "Applying release tag: $RELEASE_TAG"
+          aws ecr put-image \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --image-tag "$RELEASE_TAG" \
+            --image-manifest "file://${MANIFEST_FILE}" 2>/dev/null || true
+
+          echo "Applying timestamped release tag: $RELEASE_TS_TAG"
+          aws ecr put-image \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --image-tag "$RELEASE_TS_TAG" \
+            --image-manifest "file://${MANIFEST_FILE}" 2>/dev/null || true
+
+          rm -f "$MANIFEST_FILE"
+
+          echo "ECR image tagged:"
+          echo "  - ${ECR_REGISTRY}/${ECR_REPO}:${RELEASE_TAG}"
+          echo "  - ${ECR_REGISTRY}/${ECR_REPO}:${RELEASE_TS_TAG}"
+
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "release_timestamp_tag=$RELEASE_TS_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          GIT_COMMIT="${{ inputs.git_commit }}"
+          UAT_TAG="${{ inputs.uat_tag }}"
+          RELEASE_TAG="${{ steps.retag.outputs.release_tag }}"
+          RELEASE_TS_TAG="${{ steps.retag.outputs.release_timestamp_tag }}"
+          IMAGE_DIGEST="${{ inputs.image_digest }}"
+          RELEASE_NAME="v${VERSION}"
+          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GIT_COMMIT}"
+
+          NOTES="## Release \`v${VERSION}\`
+
+          Promoted \`${UAT_TAG}\` → \`${RELEASE_TAG}\` in ECR.
+
+          | | |
+          |---|---|
+          | **Commit** | [\`${GIT_COMMIT}\`](${COMMIT_URL}) |
+          | **Timestamp tag** | \`${RELEASE_TS_TAG}\` |
+          | **Digest** | \`${IMAGE_DIGEST}\` |"
+
+          if gh release view "$RELEASE_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "GitHub release $RELEASE_NAME already exists — updating."
+            gh release edit "$RELEASE_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GIT_COMMIT" \
+              --title "$RELEASE_NAME" \
+              --notes "$NOTES"
+          else
+            gh release create "$RELEASE_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GIT_COMMIT" \
+              --title "$RELEASE_NAME" \
+              --notes "$NOTES" \
+              --latest
+          fi
+
+          echo "GitHub release $RELEASE_NAME created at commit $GIT_COMMIT"
