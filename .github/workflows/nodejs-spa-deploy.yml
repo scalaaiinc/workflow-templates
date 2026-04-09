@@ -102,6 +102,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: scalaaiinc/workflow-templates
+          ref: feature/VOYAG-321
           path: .workflow-templates
 
       - name: Deploy SPA to live
