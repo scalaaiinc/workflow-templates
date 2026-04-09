@@ -54,7 +54,7 @@ runs:
       run: |
         SPA_BUCKET="${{ inputs.spa_bucket }}"
         ARCHIVE_KEY="archive/${DEPLOY_TIMESTAMP}-${{ inputs.release_artifact }}"
-        LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ')
+        LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ' || echo "0")
         if [ "$LIVE_COUNT" -gt "0" ]; then
           echo "📦 Archiving current live content..."
           mkdir -p /tmp/spa-archive
