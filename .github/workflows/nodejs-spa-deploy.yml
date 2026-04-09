@@ -48,6 +48,14 @@ on:
         type: string
         default: ""
         description: "Target S3 bucket for auth config. If empty, derived from convention."
+      config_repo_ref:
+        required: false
+        type: string
+        default: "main"
+        description: "Branch or tag of the client-configs-aws-cdk repo"
+    secrets:
+      SCALA_ORG_RO_PAT:
+        required: false
 
 permissions:
   id-token: write
@@ -105,6 +113,16 @@ jobs:
           ref: feature/VOYAG-321
           path: .workflow-templates
 
+      - name: Merge client context config
+        if: ${{ secrets.SCALA_ORG_RO_PAT != '' }}
+        uses: ./.workflow-templates/.github/actions/merge-client-config
+        with:
+          config_repo_ref: ${{ inputs.config_repo_ref }}
+          client: ${{ inputs.client }}
+          environment: ${{ inputs.environment }}
+          service: ${{ github.event.repository.name }}
+          token: ${{ secrets.SCALA_ORG_RO_PAT }}
+
       - name: Deploy SPA to live
         uses: ./.workflow-templates/.github/actions/deploy-spa-to-live
         with:
@@ -115,5 +133,5 @@ jobs:
           cloudfront_distribution_id: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}
           client: ${{ inputs.client }}
           environment: ${{ inputs.environment }}
-          context_file: ${{ inputs.context_file }}
+          context_file: ${{ secrets.SCALA_ORG_RO_PAT != '' && format('{0}/cdk.context.json', github.workspace) || '' }}
           auth_config_bucket: ${{ inputs.auth_config_bucket }}
