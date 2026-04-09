@@ -121,7 +121,21 @@ runs:
         AUTH_CONFIG_BUCKET="${{ inputs.auth_config_bucket }}"
         if [ -z "$AUTH_CONFIG_BUCKET" ]; then
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          AUTH_CONFIG_BUCKET="${CLIENT}-${ENV}-${ACCOUNT_ID}-auth-config"
+          # Convention: {client}-{env}-auth-config-{account}
+          AUTH_CONFIG_BUCKET="${CLIENT}-${ENV}-auth-config-${ACCOUNT_ID}"
+          # Fallback: look up a bucket matching *auth-config* for this client/env
+          if ! aws s3api head-bucket --bucket "$AUTH_CONFIG_BUCKET" 2>/dev/null; then
+            echo "⚠️ Bucket $AUTH_CONFIG_BUCKET not found, searching for auth-config bucket..."
+            AUTH_CONFIG_BUCKET=$(aws s3api list-buckets --query "Buckets[].Name" --output text \
+              | tr '\t' '\n' \
+              | grep -E "^${CLIENT}-${ENV}-.*auth-config" \
+              | head -n 1)
+            if [ -z "$AUTH_CONFIG_BUCKET" ]; then
+              echo "::error::No auth-config bucket found for ${CLIENT}-${ENV}"
+              exit 1
+            fi
+            echo "Resolved auth-config bucket: $AUTH_CONFIG_BUCKET"
+          fi
         fi
 
         echo "📝 Generated auth config: $CONFIG_FILENAME"
