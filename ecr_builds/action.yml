@@ -1,0 +1,272 @@
+name: 'Generic Docker CDK Build and Deploy'
+description: 'Reusable composite action for building and deploying Docker-based projects with AWS CDK.'
+
+inputs:
+  mode:
+    description: 'Mode: synth, diff, or deploy'
+    required: true
+  client:
+    description: 'Client name'
+    required: true
+  environment:
+    description: 'Environment name'
+    required: true
+  service:
+    description: 'Service name'
+    required: true
+  use-shared-bootstrap:
+    description: 'Use shared-services bootstrap'
+    required: false
+    default: 'true'
+  config-repo-path:
+    description: 'Absolute path to config repository (for orchestrator mode)'
+    required: false
+    default: ''
+
+outputs:
+  has-changes:
+    description: 'Whether CDK diff detected changes'
+    value: ${{ steps.diff.outputs.has-changes }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Tag repo with uat/{timestamp}
+      shell: bash
+      run: |
+        TIMESTAMP=$(date +'%Y%m%d%H%M%S')
+        UAT_TAG="uat/$TIMESTAMP"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        git tag --force "$UAT_TAG"
+        git push --force origin "$UAT_TAG"
+        echo "UAT_TAG=$UAT_TAG" >> $GITHUB_ENV
+        echo "Created and pushed tag $UAT_TAG"
+    
+    - name: Build Docker image
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        IMAGE_NAME="${{ inputs.service }}"
+        docker build -t "$IMAGE_NAME:latest" .
+        echo "Built Docker image $IMAGE_NAME:latest"
+        echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+    - name: Login to Shared Services ECR
+      if: inputs.mode == 'deploy' && inputs.use-shared-bootstrap == 'true'
+      shell: bash
+      run: |
+        echo "🔑 Configuring cross-account ECR access..."
+        mkdir -p ~/.docker
+        echo '{}' > ~/.docker/config.json
+        CURRENT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+        echo "Current account: $CURRENT_ACCOUNT"
+        echo "Attempting to assume role in shared-services (579107446826) for ECR operations..."
+        if aws sts assume-role \
+          --role-arn "arn:aws:iam::579107446826:role/cdk-hnb659fds-image-publishing-role-579107446826-us-east-1" \
+          --role-session-name "github-cdk-ecr-${{ github.run_id }}" > /tmp/assume-role.json 2>&1; then
+          export AWS_ECR_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' /tmp/assume-role.json)
+          export AWS_ECR_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' /tmp/assume-role.json)
+          export AWS_ECR_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' /tmp/assume-role.json)
+          AWS_ACCESS_KEY_ID=$AWS_ECR_ACCESS_KEY_ID \
+          AWS_SECRET_ACCESS_KEY=$AWS_ECR_SECRET_ACCESS_KEY \
+          AWS_SESSION_TOKEN=$AWS_ECR_SESSION_TOKEN \
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin 579107446826.dkr.ecr.us-east-1.amazonaws.com
+          echo "✅ Successfully configured cross-account ECR access"
+          rm -f /tmp/assume-role.json
+        else
+          echo "⚠️  Could not assume role in shared-services, using current credentials"
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin 579107446826.dkr.ecr.us-east-1.amazonaws.com || true
+        fi
+        
+    - name: Tag Docker image with git commit hash and uat/{timestamp}
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        GIT_COMMIT=$(git rev-parse --short HEAD)
+        IMAGE_NAME="$IMAGE_NAME"
+        UAT_TAG="$UAT_TAG"
+        docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$GIT_COMMIT"
+        docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$UAT_TAG"
+        echo "Tagged Docker image as $IMAGE_NAME:$GIT_COMMIT and $IMAGE_NAME:$UAT_TAG"
+        echo "IMAGE_TAG=$UAT_TAG" >> $GITHUB_ENV
+    - name: Push Docker image to ECR
+      shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ env.AWS_ECR_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ env.AWS_ECR_SECRET_ACCESS_KEY }}
+        AWS_SESSION_TOKEN: ${{ env.AWS_ECR_SESSION_TOKEN }}
+      run: |
+        cd "$REPO_DIR"
+        ECR_REPO="579107446826.dkr.ecr.us-east-1.amazonaws.com/$IMAGE_NAME"
+        SERVICE_TAG_COMMIT="${IMAGE_NAME}-${GIT_COMMIT}"
+        SERVICE_TAG_UAT="${IMAGE_NAME}-${UAT_TAG}"
+        docker tag "$IMAGE_NAME:$GIT_COMMIT" "$ECR_REPO:$SERVICE_TAG_COMMIT"
+        docker tag "$IMAGE_NAME:$UAT_TAG" "$ECR_REPO:$SERVICE_TAG_UAT"
+        docker push "$ECR_REPO:$SERVICE_TAG_COMMIT"
+        docker push "$ECR_REPO:$SERVICE_TAG_UAT"
+        echo "Pushed Docker image to ECR as $ECR_REPO:$SERVICE_TAG_COMMIT and $ECR_REPO:$SERVICE_TAG_UAT"
+    - name: Set IMAGE_TAG for deployment
+      shell: bash
+      run: |
+          echo "IMAGE_TAG=${IMAGE_NAME}-${UAT_TAG}" >> $GITHUB_ENV
+          echo "Set IMAGE_TAG for deployment: ${IMAGE_NAME}-${UAT_TAG}"
+    
+    - name: Change to service repo directory
+      shell: bash
+      run: |
+        # Determine if we're in service-repo subdirectory (orchestrator mode)
+        if [ -d "$GITHUB_WORKSPACE/service-repo" ]; then
+          REPO_DIR="$GITHUB_WORKSPACE/service-repo"
+          cd "$REPO_DIR"
+          echo "✅ Changed to service-repo directory"
+        else
+          # Already in the service repo (reusable workflow mode)
+          REPO_DIR="$GITHUB_WORKSPACE"
+          echo "✅ Using current workspace directory"
+        fi
+        echo "REPO_DIR=$REPO_DIR" >> $GITHUB_ENV
+        if [ -f "$REPO_DIR/cdk.context.json" ]; then
+          echo "✅ Found cdk.context.json"
+        else
+          echo "❌ cdk.context.json not found in $REPO_DIR"
+          ls -la "$REPO_DIR" || true
+          exit 1
+        fi
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        echo "📦 Installing dependencies with uv..."
+        uv sync
+        echo "✅ Dependencies installed"
+      env:
+        UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+        UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+
+    - name: CDK Synth
+      if: inputs.mode == 'synth' || inputs.mode == 'diff' || inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        echo "🔨 Synthesizing CDK app for ${{ inputs.service }} (${{ inputs.client }}-${{ inputs.environment }})"
+        uv run cdk synth --all 2>&1 | tee synth.log
+        echo "✅ CDK synth completed"
+      env:
+        CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+        USE_SHARED_BOOTSTRAP: ${{ inputs.use-shared-bootstrap }}
+        UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+        UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+
+    - name: CDK List Stacks
+      if: inputs.mode == 'synth' || inputs.mode == 'diff'
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        echo "📋 Listing CDK stacks..."
+        uv run cdk list 2>&1 | tee -a synth.log
+        echo "✅ CDK list completed"
+      env:
+        CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+        USE_SHARED_BOOTSTRAP: ${{ inputs.use-shared-bootstrap }}
+        UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+        UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+
+    - name: CDK Diff
+      id: diff
+      if: inputs.mode == 'diff'
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        echo "📊 Generating deployment diff for ${{ inputs.service }} (${{ inputs.client }}-${{ inputs.environment }})"
+        set +e
+        uv run cdk diff --all 2>&1 | tee diff.log
+        DIFF_EXIT_CODE=$?
+        set -e
+        if [ $DIFF_EXIT_CODE -eq 1 ]; then
+          echo "has-changes=true" >> $GITHUB_OUTPUT
+          echo "✅ Changes detected - deployment needed"
+        elif [ $DIFF_EXIT_CODE -eq 0 ]; then
+          echo "has-changes=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No changes detected - stacks are already up to date"
+        else
+          echo "❌ CDK diff failed with exit code $DIFF_EXIT_CODE"
+          exit $DIFF_EXIT_CODE
+        fi
+      env:
+        CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+        USE_SHARED_BOOTSTRAP: ${{ inputs.use-shared-bootstrap }}
+        UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+        UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+
+    - name: Login to Shared Services ECR
+      if: inputs.mode == 'deploy' && inputs.use-shared-bootstrap == 'true'
+      shell: bash
+      run: |
+        echo "🔑 Configuring cross-account ECR access..."
+        mkdir -p ~/.docker
+        echo '{}' > ~/.docker/config.json
+        CURRENT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+        echo "Current account: $CURRENT_ACCOUNT"
+        echo "Attempting to assume role in shared-services (579107446826) for ECR operations..."
+        if aws sts assume-role \
+          --role-arn "arn:aws:iam::579107446826:role/cdk-hnb659fds-image-publishing-role-579107446826-us-east-1" \
+          --role-session-name "github-cdk-ecr-${{ github.run_id }}" > /tmp/assume-role.json 2>&1; then
+          export AWS_ECR_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' /tmp/assume-role.json)
+          export AWS_ECR_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' /tmp/assume-role.json)
+          export AWS_ECR_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' /tmp/assume-role.json)
+          AWS_ACCESS_KEY_ID=$AWS_ECR_ACCESS_KEY_ID \
+          AWS_SECRET_ACCESS_KEY=$AWS_ECR_SECRET_ACCESS_KEY \
+          AWS_SESSION_TOKEN=$AWS_ECR_SESSION_TOKEN \
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin 579107446826.dkr.ecr.us-east-1.amazonaws.com
+          echo "✅ Successfully configured cross-account ECR access"
+          rm -f /tmp/assume-role.json
+        else
+          echo "⚠️  Could not assume role in shared-services, using current credentials"
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin 579107446826.dkr.ecr.us-east-1.amazonaws.com || true
+        fi
+
+    - name: CDK Deploy
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        cd "$REPO_DIR"
+        echo "🚀 Deploying ${{ inputs.service }} to ${{ inputs.client }}-${{ inputs.environment }}"
+        echo "🔍 DEBUG: CDK_ENVIRONMENT=$CDK_ENVIRONMENT"
+        echo "🔍 DEBUG: Environment keys in context: $(cat cdk.context.json | jq '.environments | keys')"
+        echo "Using IMAGE_TAG=$IMAGE_TAG"
+        uv run cdk deploy --all --require-approval never 2>&1 | tee deploy.log
+        echo "✅ CDK deploy completed"
+      env:
+        CDK_ENVIRONMENT: ${{ inputs.client }}-${{ inputs.environment }}
+        USE_SHARED_BOOTSTRAP: ${{ inputs.use-shared-bootstrap }}
+        UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
+        UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
+        GITHUB_PAT: ${{ env.GITHUB_PAT }}
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+    - name: Tag git repo as uat-deployed
+      shell: bash
+      run: |
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        git tag --force "uat-deployed"
+        git push --force origin "uat-deployed"
+        echo "Tagged repo as uat-deployed"
+    - name: Tag image in ECR as uat-deployed
+      shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ env.AWS_ECR_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ env.AWS_ECR_SECRET_ACCESS_KEY }}
+        AWS_SESSION_TOKEN: ${{ env.AWS_ECR_SESSION_TOKEN }}
+      run: |
+        ECR_REPO="579107446826.dkr.ecr.us-east-1.amazonaws.com/$IMAGE_NAME"
+        docker tag "$ECR_REPO:$IMAGE_TAG" "$ECR_REPO:${IMAGE_NAME}-uat-deployed"
+        docker push "$ECR_REPO:${IMAGE_NAME}-uat-deployed"
+        echo "Tagged ECR image as ${IMAGE_NAME}-uat-deployed"
+
