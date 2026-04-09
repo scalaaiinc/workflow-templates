@@ -149,12 +149,9 @@ print(data.get('tool', {}).get('scala', {}).get('release', {}).get('target-versi
           cp -r "$BUILD_DIRECTORY"/. /tmp/spa-package/voyager-spa
 
           # Write VERSION file into the archive
-          cat > /tmp/spa-package/voyager-spa/VERSION <<EOF
-          version=${RELEASE_VERSION}
-          git_commit=${GIT_HASH}
-          timestamp=${TIMESTAMP}
-          service=${SERVICE_NAME}
-          EOF
+          printf 'version=%s\ngit_commit=%s\ntimestamp=%s\nservice=%s\n' \
+            "${RELEASE_VERSION}" "${GIT_HASH}" "${TIMESTAMP}" "${SERVICE_NAME}" \
+            > /tmp/spa-package/voyager-spa/VERSION
 
           (cd /tmp/spa-package && zip -r /tmp/spa-release.zip voyager-spa)
           rm -rf /tmp/spa-package
