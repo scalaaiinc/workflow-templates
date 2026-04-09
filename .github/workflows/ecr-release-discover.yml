@@ -1,0 +1,195 @@
+name: ECR Release Discover
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "Service / image name (e.g. voyager-api)."
+        required: true
+        type: string
+      version:
+        description: "Semver to promote. If empty, extracted from the latest UAT tag."
+        required: false
+        type: string
+        default: ""
+      aws_region:
+        description: "AWS region for ECR."
+        required: false
+        type: string
+        default: "us-east-1"
+      cdk_bootstrap_account:
+        description: "Shared bootstrap account that hosts the central ECR repo."
+        required: false
+        type: string
+        default: "579107446826"
+    outputs:
+      uat_tag:
+        description: "The UAT tag of the discovered image."
+        value: ${{ jobs.discover.outputs.uat_tag }}
+      version:
+        description: "The resolved release version."
+        value: ${{ jobs.discover.outputs.version }}
+      docker_safe_version:
+        description: "Docker-safe version string."
+        value: ${{ jobs.discover.outputs.docker_safe_version }}
+      image_digest:
+        description: "The image digest of the discovered image."
+        value: ${{ jobs.discover.outputs.image_digest }}
+      git_commit:
+        description: "The short git commit SHA the image was built from."
+        value: ${{ jobs.discover.outputs.git_commit }}
+      uat_pushed_at:
+        description: "Timestamp when the UAT image was pushed."
+        value: ${{ jobs.discover.outputs.uat_pushed_at }}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  CDK_BOOTSTRAP_ACCOUNT: ${{ inputs.cdk_bootstrap_account }}
+  AWS_REGION: ${{ inputs.aws_region }}
+  ECR_REPO: "cdk-hnb659fds-central-container-${{ inputs.cdk_bootstrap_account }}-${{ inputs.aws_region }}"
+  ECR_REGISTRY: "${{ inputs.cdk_bootstrap_account }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      uat_tag: ${{ steps.discover.outputs.uat_tag }}
+      version: ${{ steps.resolve_version.outputs.version }}
+      docker_safe_version: ${{ steps.resolve_version.outputs.docker_safe_version }}
+      image_digest: ${{ steps.resolve_image.outputs.image_digest }}
+      git_commit: ${{ steps.resolve_image.outputs.git_commit }}
+      uat_pushed_at: ${{ steps.resolve_image.outputs.uat_pushed_at }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.CDK_BOOTSTRAP_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ env.AWS_REGION }}
+          role-session-name: github-ecr-promote-discover-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authenticate with ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "$AWS_REGION" | \
+            docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: Discover latest UAT image
+        id: discover
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="${{ inputs.service }}"
+          VERSION="${{ inputs.version }}"
+
+          if [ -n "$VERSION" ]; then
+            DOCKER_SAFE_VERSION=$(printf '%s' "$VERSION" | sed 's/[^A-Za-z0-9_.-]/-/g')
+            TAG_PREFIX="${SERVICE}-uat-${DOCKER_SAFE_VERSION}-"
+          else
+            TAG_PREFIX="${SERVICE}-uat-"
+          fi
+
+          echo "Looking for images matching tag prefix: ${TAG_PREFIX}*"
+
+          LATEST_UAT_TAG=$(aws ecr describe-images \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --query "sort_by(imageDetails[?contains(join(',', imageTags || \`[]\`), \`${TAG_PREFIX}\`)], &imagePushedAt)[-1].imageTags" \
+            --output json | jq -r --arg prefix "$TAG_PREFIX" '[.[]? | select(startswith($prefix))] | first // empty')
+
+          if [ -z "$LATEST_UAT_TAG" ]; then
+            echo "::error::No UAT image found with tag prefix '${TAG_PREFIX}' in ${ECR_REPO}"
+            exit 1
+          fi
+
+          echo "Found latest UAT tag: $LATEST_UAT_TAG"
+          echo "uat_tag=$LATEST_UAT_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve version from UAT tag
+        id: resolve_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="${{ inputs.service }}"
+          VERSION="${{ inputs.version }}"
+          UAT_TAG="${{ steps.discover.outputs.uat_tag }}"
+
+          if [ -n "$VERSION" ]; then
+            DOCKER_SAFE_VERSION=$(printf '%s' "$VERSION" | sed 's/[^A-Za-z0-9_.-]/-/g')
+          else
+            WITHOUT_PREFIX="${UAT_TAG#${SERVICE}-uat-}"
+            DOCKER_SAFE_VERSION="${WITHOUT_PREFIX%-[0-9]*T[0-9]*Z}"
+            VERSION="$DOCKER_SAFE_VERSION"
+          fi
+
+          echo "Release version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "docker_safe_version=$DOCKER_SAFE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve image digest and git commit
+        id: resolve_image
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="${{ inputs.service }}"
+          UAT_TAG="${{ steps.discover.outputs.uat_tag }}"
+
+          IMAGE_DETAILS=$(aws ecr describe-images \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --image-ids imageTag="$UAT_TAG" \
+            --query 'imageDetails[0]' \
+            --output json)
+
+          IMAGE_DIGEST=$(echo "$IMAGE_DETAILS" | jq -r '.imageDigest')
+          UAT_PUSHED_AT=$(echo "$IMAGE_DETAILS" | jq -r '.imagePushedAt')
+
+          echo "Image digest: $IMAGE_DIGEST"
+          echo "UAT pushed at: $UAT_PUSHED_AT"
+
+          ALL_TAGS=$(echo "$IMAGE_DETAILS" | jq -r '.imageTags')
+
+          SHA_TAG=$(echo "$ALL_TAGS" | jq -r --arg svc "$SERVICE" \
+            '[.[]? | select(startswith($svc + "-sha-"))] | first // empty')
+
+          if [ -z "$SHA_TAG" ]; then
+            echo "::error::Could not find a sha tag for digest $IMAGE_DIGEST. Cannot determine git commit."
+            exit 1
+          fi
+
+          GIT_COMMIT="${SHA_TAG#${SERVICE}-sha-}"
+          echo "Resolved git commit: $GIT_COMMIT"
+
+          echo "image_digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "git_commit=$GIT_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "uat_pushed_at=$UAT_PUSHED_AT" >> "$GITHUB_OUTPUT"
+
+      - name: Write discovery summary
+        shell: bash
+        run: |
+          SERVICE="${{ inputs.service }}"
+          VERSION="${{ steps.resolve_version.outputs.version }}"
+          GIT_COMMIT="${{ steps.resolve_image.outputs.git_commit }}"
+          UAT_TAG="${{ steps.discover.outputs.uat_tag }}"
+          IMAGE_DIGEST="${{ steps.resolve_image.outputs.image_digest }}"
+          UAT_PUSHED_AT="${{ steps.resolve_image.outputs.uat_pushed_at }}"
+          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GIT_COMMIT}"
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🚀 Release Promotion — ${SERVICE} v${VERSION}
+
+          | Detail | Value |
+          |--------|-------|
+          | **Service** | \`${SERVICE}\` |
+          | **Target Version** | \`v${VERSION}\` |
+          | **Git Commit** | [\`${GIT_COMMIT}\`](${COMMIT_URL}) |
+          | **UAT Tag** | \`${UAT_TAG}\` |
+          | **Released to UAT** | ${UAT_PUSHED_AT} |
+          | **Image Digest** | \`${IMAGE_DIGEST}\` |
+
+          > **Next step:** Approve the promotion to retag this image and create the GitHub release.
+          EOF

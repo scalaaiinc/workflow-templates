@@ -1,0 +1,153 @@
+name: Deploy SPA to Live
+description: >
+  Archives current live content, deploys SPA assets to /live/ with atomic
+  index.html switchover, cleans orphans, optionally generates auth config,
+  and invalidates CloudFront.
+
+inputs:
+  spa_local_folder:
+    description: 'Local path to extracted SPA content (directory containing index.html)'
+    required: true
+  spa_bucket:
+    description: 'Target S3 bucket for the SPA'
+    required: true
+  release_artifact:
+    description: 'Release artifact filename (used in archive naming)'
+    required: true
+  aws_region:
+    description: 'AWS region for CloudFront lookup'
+    required: false
+    default: 'us-east-1'
+  cloudfront_distribution_id:
+    description: 'CloudFront distribution ID. If empty, auto-detected from bucket origin.'
+    required: false
+    default: ''
+  # Auth config inputs (optional — skipped when context_file is empty)
+  client:
+    description: 'Client name for auth config generation'
+    required: false
+    default: ''
+  environment:
+    description: 'Environment name for auth config generation'
+    required: false
+    default: ''
+  context_file:
+    description: 'Path to merged cdk.context.json. If set, generates and uploads auth config.'
+    required: false
+    default: ''
+  auth_config_bucket:
+    description: 'Target S3 bucket for auth config. If empty, derived from convention.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set deploy variables
+      shell: bash
+      run: |
+        echo "LIVE_PREFIX=live/" >> "$GITHUB_ENV"
+        echo "DEPLOY_TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
+
+    - name: Archive current live content
+      shell: bash
+      run: |
+        SPA_BUCKET="${{ inputs.spa_bucket }}"
+        ARCHIVE_KEY="archive/${DEPLOY_TIMESTAMP}-${{ inputs.release_artifact }}"
+        LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ') || LIVE_COUNT=0
+        if [ "$LIVE_COUNT" -gt "0" ]; then
+          echo "📦 Archiving current live content..."
+          mkdir -p /tmp/spa-archive
+          aws s3 sync "s3://${SPA_BUCKET}/${LIVE_PREFIX}" /tmp/spa-archive/ --quiet
+          (cd /tmp/spa-archive && zip -r /tmp/spa-backup.zip .)
+          aws s3 cp /tmp/spa-backup.zip "s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
+          rm -rf /tmp/spa-archive /tmp/spa-backup.zip
+          echo "✅ Archived to s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
+        else
+          echo "⚠️ No existing live content to archive"
+        fi
+
+    - name: Upload assets (excluding index.html)
+      shell: bash
+      run: |
+        SPA_BUCKET="${{ inputs.spa_bucket }}"
+        echo "🚀 Deploying ${{ inputs.release_artifact }} to s3://${SPA_BUCKET}/${LIVE_PREFIX}"
+        aws s3 sync "${{ inputs.spa_local_folder }}/" "s3://${SPA_BUCKET}/${LIVE_PREFIX}" \
+          --exclude "index.html" \
+          --cache-control "public, max-age=31536000, immutable"
+
+    - name: Upload index.html (atomic switchover)
+      shell: bash
+      run: |
+        SPA_BUCKET="${{ inputs.spa_bucket }}"
+        aws s3 cp "${{ inputs.spa_local_folder }}/index.html" "s3://${SPA_BUCKET}/${LIVE_PREFIX}index.html" \
+          --cache-control "no-cache, no-store, must-revalidate"
+
+    - name: Remove orphaned assets
+      shell: bash
+      run: |
+        SPA_BUCKET="${{ inputs.spa_bucket }}"
+        SPA_LOCAL_FOLDER="${{ inputs.spa_local_folder }}"
+        aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive \
+          | awk '{print $4}' \
+          | sed "s|^${LIVE_PREFIX}||" \
+          | while read -r remote_key; do
+              if [ -n "$remote_key" ] && [ ! -f "$SPA_LOCAL_FOLDER/$remote_key" ]; then
+                aws s3 rm "s3://${SPA_BUCKET}/${LIVE_PREFIX}${remote_key}"
+              fi
+            done
+
+    - name: Generate and upload auth config
+      if: ${{ inputs.context_file != '' }}
+      uses: scalaaiinc/workflow-templates/.github/actions/generate-spa-config@main
+      with:
+        client: ${{ inputs.client }}
+        environment: ${{ inputs.environment }}
+        context_file: ${{ inputs.context_file }}
+        auth_config_bucket: ${{ inputs.auth_config_bucket }}
+
+    - name: Invalidate CloudFront cache
+      shell: bash
+      run: |
+        SPA_BUCKET="${{ inputs.spa_bucket }}"
+        AWS_REGION="${{ inputs.aws_region }}"
+        RESOLVED_DISTRIBUTION_ID="${{ inputs.cloudfront_distribution_id }}"
+
+        lookup_distribution() {
+          echo "🔄 Looking up CloudFront distribution for bucket ${SPA_BUCKET}..." >&2
+          local ORIGIN_DOMAIN_A="${SPA_BUCKET}.s3.amazonaws.com"
+          local ORIGIN_DOMAIN_B="${SPA_BUCKET}.s3.${AWS_REGION}.amazonaws.com"
+          aws cloudfront list-distributions --output json | jq -r \
+            --arg domainA "$ORIGIN_DOMAIN_A" \
+            --arg domainB "$ORIGIN_DOMAIN_B" \
+            '.DistributionList.Items[]? | select(any(.Origins.Items[]?; .DomainName == $domainA or .DomainName == $domainB)) | .Id' | head -n 1
+        }
+
+        if [ -z "$RESOLVED_DISTRIBUTION_ID" ]; then
+          RESOLVED_DISTRIBUTION_ID=$(lookup_distribution)
+        fi
+
+        if [ -z "$RESOLVED_DISTRIBUTION_ID" ] || [ "$RESOLVED_DISTRIBUTION_ID" = "null" ]; then
+          echo "⚠️ No CloudFront distribution found for bucket ${SPA_BUCKET}. Skipping invalidation."
+          exit 0
+        fi
+
+        echo "Using CloudFront distribution: $RESOLVED_DISTRIBUTION_ID"
+        if ! aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*" 2>/dev/null; then
+          echo "⚠️ Provided distribution $RESOLVED_DISTRIBUTION_ID failed — attempting auto-discovery..."
+          RESOLVED_DISTRIBUTION_ID=$(lookup_distribution)
+          if [ -z "$RESOLVED_DISTRIBUTION_ID" ] || [ "$RESOLVED_DISTRIBUTION_ID" = "null" ]; then
+            echo "⚠️ No CloudFront distribution found for bucket ${SPA_BUCKET}. Skipping invalidation."
+            exit 0
+          fi
+          echo "Resolved CloudFront distribution: $RESOLVED_DISTRIBUTION_ID"
+          aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*"
+        fi
+        echo "✅ CloudFront invalidation created"
+
+    - name: Deployment summary
+      shell: bash
+      run: |
+        echo "✅ SPA deployed successfully"
+        echo "  Artifact: ${{ inputs.release_artifact }}"
+        echo "  Target: s3://${{ inputs.spa_bucket }}/${LIVE_PREFIX}"

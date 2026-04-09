@@ -23,11 +23,39 @@ on:
       spa_bucket:
         required: false
         type: string
-        default: "scala-uat-193044710768-voyager-spa"
+        default: "scala-uat-voyager-spa-193044710768"
       cloudfront_distribution_id:
         required: false
         type: string
         default: ""
+      client:
+        required: false
+        type: string
+        default: "scala"
+        description: "Client name for auth config generation (e.g. scala)"
+      environment:
+        required: false
+        type: string
+        default: "uat"
+        description: "Environment name for auth config generation (e.g. uat)"
+      context_file:
+        required: false
+        type: string
+        default: ""
+        description: "Path to merged cdk.context.json. If set, generates and uploads auth config."
+      auth_config_bucket:
+        required: false
+        type: string
+        default: ""
+        description: "Target S3 bucket for auth config. If empty, derived from convention."
+      config_repo_ref:
+        required: false
+        type: string
+        default: "main"
+        description: "Branch or tag of the client-configs-aws-cdk repo"
+    secrets:
+      SCALA_ORG_RO_PAT:
+        required: false
 
 permissions:
   id-token: write
@@ -76,70 +104,46 @@ jobs:
       - name: Set deploy variables
         shell: bash
         run: |
-          echo "LIVE_PREFIX=live/" >> "$GITHUB_ENV"
           echo "DEPLOY_TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
 
-      - name: Archive current live contents
+      - name: Checkout workflow-templates for shared actions
+        uses: actions/checkout@v4
+        with:
+          repository: scalaaiinc/workflow-templates
+          path: .workflow-templates
+
+      - name: Check config secret availability
+        id: config_check
         shell: bash
         run: |
-          ARCHIVE_KEY="archive/${DEPLOY_TIMESTAMP}-${RELEASE_ARTIFACT}"
-          LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$LIVE_COUNT" -gt "0" ]; then
-            mkdir -p /tmp/spa-archive
-            aws s3 sync "s3://${SPA_BUCKET}/${LIVE_PREFIX}" /tmp/spa-archive/ --quiet
-            (cd /tmp/spa-archive && zip -r /tmp/spa-backup.zip .)
-            aws s3 cp /tmp/spa-backup.zip "s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
-            rm -rf /tmp/spa-archive /tmp/spa-backup.zip
-            echo "✅ Archived to s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
+          if [ -n "$CONFIG_PAT" ]; then
+            echo "has_pat=true" >> "$GITHUB_OUTPUT"
           else
-            echo "⚠️  No existing live content to archive"
+            echo "has_pat=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          CONFIG_PAT: ${{ secrets.SCALA_ORG_RO_PAT }}
 
-      - name: Upload assets (excluding index.html)
-        shell: bash
-        run: |
-          aws s3 sync "$SPA_LOCAL_FOLDER/" "s3://${SPA_BUCKET}/${LIVE_PREFIX}" \
-            --exclude "index.html" \
-            --cache-control "public, max-age=31536000, immutable"
+      - name: Merge client context config
+        if: steps.config_check.outputs.has_pat == 'true'
+        uses: ./.workflow-templates/.github/actions/merge-client-config
+        with:
+          config_repo_ref: ${{ inputs.config_repo_ref }}
+          client: ${{ inputs.client }}
+          environment: ${{ inputs.environment }}
+          service: ${{ github.event.repository.name }}
+          token: ${{ secrets.SCALA_ORG_RO_PAT }}
 
-      - name: Upload index.html (atomic switchover)
-        shell: bash
-        run: |
-          aws s3 cp "$SPA_LOCAL_FOLDER/index.html" "s3://${SPA_BUCKET}/${LIVE_PREFIX}index.html" \
-            --cache-control "no-cache, no-store, must-revalidate"
+      - name: Deploy SPA to live
+        uses: ./.workflow-templates/.github/actions/deploy-spa-to-live
+        with:
+          spa_local_folder: ${{ env.SPA_LOCAL_FOLDER }}
+          spa_bucket: ${{ env.SPA_BUCKET }}
+          release_artifact: ${{ env.RELEASE_ARTIFACT }}
+          aws_region: ${{ env.AWS_REGION }}
+          cloudfront_distribution_id: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}
+          client: ${{ inputs.client }}
+          environment: ${{ inputs.environment }}
+          context_file: ${{ steps.config_check.outputs.has_pat == 'true' && format('{0}/cdk.context.json', github.workspace) || '' }}
+          auth_config_bucket: ${{ inputs.auth_config_bucket }}
 
-      - name: Remove orphaned assets
-        shell: bash
-        run: |
-          aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive \
-            | awk '{print $4}' \
-            | sed "s|^${LIVE_PREFIX}||" \
-            | while read -r remote_key; do
-                if [ -n "$remote_key" ] && [ ! -f "$SPA_LOCAL_FOLDER/$remote_key" ]; then
-                  aws s3 rm "s3://${SPA_BUCKET}/${LIVE_PREFIX}${remote_key}"
-                fi
-              done
-
-      - name: Invalidate CloudFront cache
-        shell: bash
-        run: |
-          RESOLVED_DISTRIBUTION_ID="$CLOUDFRONT_DISTRIBUTION_ID"
-
-          if [ -z "$RESOLVED_DISTRIBUTION_ID" ]; then
-            ORIGIN_DOMAIN_A="${SPA_BUCKET}.s3.amazonaws.com"
-            ORIGIN_DOMAIN_B="${SPA_BUCKET}.s3.${AWS_REGION}.amazonaws.com"
-
-            RESOLVED_DISTRIBUTION_ID=$(aws cloudfront list-distributions --output json | jq -r \
-              --arg domainA "$ORIGIN_DOMAIN_A" \
-              --arg domainB "$ORIGIN_DOMAIN_B" \
-              '.DistributionList.Items[]? | select(any(.Origins.Items[]?; .DomainName == $domainA or .DomainName == $domainB)) | .Id' | head -n 1)
-
-            if [ -z "$RESOLVED_DISTRIBUTION_ID" ] || [ "$RESOLVED_DISTRIBUTION_ID" = "null" ]; then
-              echo "No CloudFront distribution found for SPA bucket origin ${SPA_BUCKET}. Skipping invalidation."
-              exit 0
-            else
-              echo "Resolved CloudFront distribution ID: $RESOLVED_DISTRIBUTION_ID"
-            fi
-          fi
-
-          aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*"

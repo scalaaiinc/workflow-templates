@@ -1,0 +1,156 @@
+name: Generate SPA Auth Config
+description: >
+  Reads the merged cdk.context.json for a client/environment, generates
+  a runtime auth config JSON file ({domain}.json), and uploads it to
+  the target account's auth-config S3 bucket. The bucket is expected to
+  be versioned, so previous configs are preserved automatically.
+
+inputs:
+  client:
+    description: 'Client name (e.g. scala)'
+    required: true
+  environment:
+    description: 'Environment name (e.g. uat)'
+    required: true
+  context_file:
+    description: 'Path to the merged cdk.context.json'
+    required: true
+  auth_config_bucket:
+    description: 'Target S3 bucket for auth config. If empty, derived as {client}-{env}-{account}-auth-config.'
+    required: false
+    default: ''
+
+outputs:
+  domain:
+    description: 'The domain name resolved from core-infra dns_config'
+    value: ${{ steps.generate.outputs.domain }}
+  config_filename:
+    description: 'The auth config filename (e.g. uat.scala.ai.json)'
+    value: ${{ steps.generate.outputs.config_filename }}
+  auth_config_bucket:
+    description: 'The S3 bucket the config was uploaded to'
+    value: ${{ steps.generate.outputs.auth_config_bucket }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate and upload auth config
+      id: generate
+      shell: bash
+      run: |
+        CLIENT="${{ inputs.client }}"
+        ENV="${{ inputs.environment }}"
+        CDK_ENV="${CLIENT}-${ENV}"
+        CONTEXT_FILE="${{ inputs.context_file }}"
+
+        if [ ! -f "$CONTEXT_FILE" ]; then
+          echo "::error::cdk.context.json not found at $CONTEXT_FILE"
+          exit 1
+        fi
+
+        # Read the domain from core-infra dns_config
+        DOMAIN=$(jq -r ".environments[\"$CDK_ENV\"][\"core-infra\"].dns_config.domain // \"\"" "$CONTEXT_FILE")
+        if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "null" ]; then
+          echo "::error::domain not found in core-infra.dns_config for environment $CDK_ENV"
+          exit 1
+        fi
+
+        # Voyager-app config block selector
+        VA=".environments[\"$CDK_ENV\"][\"voyager-app\"]"
+
+        # Build the runtime auth config JSON from the merged cdk.context.json
+        # The SPA fetches this at startup instead of using build-time VITE_ env vars
+        jq -n \
+          --arg client_id "$CLIENT-$ENV" \
+          --arg client_name "$(echo "$CLIENT" | sed 's/^./\U&/') $ENV" \
+          --arg env_name "$ENV" \
+          --arg okta_client_id "$(jq -r "$VA.VITE_OKTA_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
+          --arg okta_domain "$(jq -r "$VA.VITE_OKTA_DOMAIN // \"\"" "$CONTEXT_FILE")" \
+          --arg okta_redirect "$(jq -r "$VA.VITE_OKTA_REDIRECT_URI // \"\"" "$CONTEXT_FILE")" \
+          --arg okta_scopes "$(jq -r "$VA.VITE_OKTA_SCOPES // \"\"" "$CONTEXT_FILE")" \
+          --arg okta_token "$(jq -r "$VA.VITE_OKTA_DOMAIN_TOKEN // \"\"" "$CONTEXT_FILE")" \
+          --arg okta_userinfo "$(jq -r "$VA.VITE_OKTA_DOMAIN_USERINFO // \"\"" "$CONTEXT_FILE")" \
+          --arg okta_authorize "$(jq -r "$VA.VITE_OKTA_DOMAIN_AUTHORIZE // \"\"" "$CONTEXT_FILE")" \
+          --arg graphql_uri "$(jq -r "$VA.VITE_GRAPHQL_URI // \"\"" "$CONTEXT_FILE")" \
+          --arg graphql_ws "$(jq -r "$VA.VITE_GRAPHQL_WS_URI // \"\"" "$CONTEXT_FILE")" \
+          --arg recording "$(jq -r "$VA.VITE_RECORDING_DOWNLOAD_ENDPOINT // \"\"" "$CONTEXT_FILE")" \
+          --arg alb_hostname "$(jq -r "$VA.VITE_PUBLIC_ALB_HOSTNAME // \"\"" "$CONTEXT_FILE")" \
+          --arg ld_client_id "$(jq -r "$VA.VITE_LAUNCHDARKLY_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
+          '{
+            CLIENT_ID: $client_id,
+            CLIENT_NAME: $client_name,
+            ENVIRONMENT_NAME: $env_name,
+            OKTA_CLIENT_ID: $okta_client_id,
+            OKTA_DOMAIN: $okta_domain,
+            OKTA_REDIRECT_URI: $okta_redirect,
+            OKTA_SCOPES: $okta_scopes,
+            OKTA_TOKEN_URL: $okta_token,
+            OKTA_USERINFO_URL: $okta_userinfo,
+            OKTA_AUTHORIZE_URL: $okta_authorize,
+            GRAPHQL_URI: $graphql_uri,
+            GRAPHQL_WS_URI: $graphql_ws,
+            RECORDING_DOWNLOAD_ENDPOINT: $recording,
+            PUBLIC_ALB_HOSTNAME: $alb_hostname,
+            LAUNCHDARKLY_CLIENT_ID: $ld_client_id,
+            BRANDING: { logo: "", primaryColor: "", companyName: "" }
+          }' > /tmp/auth-config.json
+
+        # Append any environment-prefixed URI overrides (PLAYGROUND, PREVIEW, PRODUCTION, etc.)
+        for ENV_SUFFIX in PLAYGROUND PREVIEW PRODUCTION; do
+          GQL=$(jq -r "$VA.VITE_GRAPHQL_URI_${ENV_SUFFIX} // \"\"" "$CONTEXT_FILE")
+          GQL_WS=$(jq -r "$VA.VITE_GRAPHQL_WS_URI_${ENV_SUFFIX} // \"\"" "$CONTEXT_FILE")
+          REC=$(jq -r "$VA.VITE_RECORDING_URI_${ENV_SUFFIX} // \"\"" "$CONTEXT_FILE")
+
+          if [ -n "$GQL" ] && [ "$GQL" != "" ]; then
+            jq --arg v "$GQL" ".GRAPHQL_URI_${ENV_SUFFIX} = \$v" /tmp/auth-config.json > /tmp/auth-config-tmp.json \
+              && mv /tmp/auth-config-tmp.json /tmp/auth-config.json
+          fi
+          if [ -n "$GQL_WS" ] && [ "$GQL_WS" != "" ]; then
+            jq --arg v "$GQL_WS" ".GRAPHQL_WS_URI_${ENV_SUFFIX} = \$v" /tmp/auth-config.json > /tmp/auth-config-tmp.json \
+              && mv /tmp/auth-config-tmp.json /tmp/auth-config.json
+          fi
+          if [ -n "$REC" ] && [ "$REC" != "" ]; then
+            jq --arg v "$REC" ".RECORDING_DOWNLOAD_ENDPOINT_${ENV_SUFFIX} = \$v" /tmp/auth-config.json > /tmp/auth-config-tmp.json \
+              && mv /tmp/auth-config-tmp.json /tmp/auth-config.json
+          fi
+        done
+
+        CONFIG_FILENAME="${DOMAIN}.json"
+
+        # Resolve auth-config bucket
+        AUTH_CONFIG_BUCKET="${{ inputs.auth_config_bucket }}"
+        if [ -z "$AUTH_CONFIG_BUCKET" ]; then
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          # Convention: {client}-{env}-auth-config-{account}
+          AUTH_CONFIG_BUCKET="${CLIENT}-${ENV}-auth-config-${ACCOUNT_ID}"
+          # Fallback: look up a bucket matching *auth-config* for this client/env
+          if ! aws s3api head-bucket --bucket "$AUTH_CONFIG_BUCKET" 2>/dev/null; then
+            echo "⚠️ Bucket $AUTH_CONFIG_BUCKET not found, searching for auth-config bucket..."
+            AUTH_CONFIG_BUCKET=$(aws s3api list-buckets --query "Buckets[].Name" --output text \
+              | tr '\t' '\n' \
+              | grep -E "^${CLIENT}-${ENV}-.*auth-config" \
+              | head -n 1)
+            if [ -z "$AUTH_CONFIG_BUCKET" ]; then
+              echo "::error::No auth-config bucket found for ${CLIENT}-${ENV}"
+              exit 1
+            fi
+            echo "Resolved auth-config bucket: $AUTH_CONFIG_BUCKET"
+          fi
+        fi
+
+        echo "📝 Generated auth config: $CONFIG_FILENAME"
+        cat /tmp/auth-config.json
+        echo ""
+
+        # Upload to the auth-config bucket (bucket is versioned, overwrite is safe)
+        aws s3 cp /tmp/auth-config.json "s3://${AUTH_CONFIG_BUCKET}/${CONFIG_FILENAME}" \
+          --content-type "application/json" \
+          --cache-control "no-cache, no-store, must-revalidate"
+        rm -f /tmp/auth-config.json /tmp/auth-config-tmp.json
+
+        echo "✅ Auth config uploaded to s3://${AUTH_CONFIG_BUCKET}/${CONFIG_FILENAME}"
+
+        # Set outputs
+        echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+        echo "config_filename=$CONFIG_FILENAME" >> $GITHUB_OUTPUT
+        echo "auth_config_bucket=$AUTH_CONFIG_BUCKET" >> $GITHUB_OUTPUT

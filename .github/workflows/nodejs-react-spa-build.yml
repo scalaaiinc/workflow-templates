@@ -26,7 +26,7 @@ on:
       spa_bucket:
         required: false
         type: string
-        default: "scala-uat-193044710768-voyager-spa"
+        default: "scala-uat-voyager-spa-193044710768"
       cloudfront_distribution_id:
         required: false
         type: string
@@ -45,8 +45,11 @@ on:
         default: "build"
     outputs:
       release_artifact:
-        description: "Filename of the uploaded release zip (e.g. 20260401T120000Z-a1b2c3d4-abc1234.zip)"
+        description: "Filename of the uploaded release zip (e.g. voyager-app-uat-2.0.0-20260401T120000Z-abc1234.zip)"
         value: ${{ jobs.build-spa.outputs.release_artifact }}
+      release_version:
+        description: "The version from pyproject.toml [tool.scala.release] target-version"
+        value: ${{ jobs.build-spa.outputs.release_version }}
     secrets:
       GITHUB_PAT:
         required: false
@@ -74,7 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_artifact: ${{ steps.upload_release.outputs.release_artifact }}
-
+      release_version: ${{ steps.upload_release.outputs.release_version }}
+      
     steps:
       - name: Setup shared CDK environment
         uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@main
@@ -125,17 +129,32 @@ jobs:
         shell: bash
         run: |
           cd "$REPO_DIR"
+          
+          # Read version from pyproject.toml [tool.scala.release] target-version
+          RELEASE_VERSION=$(python3 -c 'import tomllib, pathlib; data = tomllib.loads(pathlib.Path("pyproject.toml").read_text()); print(data.get("tool", {}).get("scala", {}).get("release", {}).get("target-version", "0.0.0"))')
+          echo "Resolved release version: ${RELEASE_VERSION}"
+
           GIT_HASH=$(git rev-parse --short HEAD)
           TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-          CACHE_BUST=$(head -c 4 /dev/urandom | xxd -p)
-          RELEASE_FILENAME="${TIMESTAMP}-${CACHE_BUST}-${GIT_HASH}.zip"
+          SERVICE_NAME="${GITHUB_REPOSITORY##*/}"
+          RELEASE_FILENAME="${SERVICE_NAME}-uat-${RELEASE_VERSION}-${TIMESTAMP}-${GIT_HASH}.zip"
           RELEASE_KEY="internal-releases/${RELEASE_FILENAME}"
+
           # Package under voyager-spa/ so the extracted folder has a predictable name
-          mkdir -p /tmp/spa-package
+          mkdir -p /tmp/spa-package/voyager-spa
           cp -r "$BUILD_DIRECTORY"/. /tmp/spa-package/voyager-spa
+
+          # Write VERSION file into the archive
+          printf 'version=%s\ngit_commit=%s\ntimestamp=%s\nservice=%s\n' \
+            "${RELEASE_VERSION}" "${GIT_HASH}" "${TIMESTAMP}" "${SERVICE_NAME}" \
+            > /tmp/spa-package/voyager-spa/VERSION
+
+
           (cd /tmp/spa-package && zip -r /tmp/spa-release.zip voyager-spa)
           rm -rf /tmp/spa-package
           aws s3 cp /tmp/spa-release.zip "s3://${SPA_BUCKET}/${RELEASE_KEY}"
           rm -f /tmp/spa-release.zip
+
           echo "release_artifact=${RELEASE_FILENAME}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "✅ Release artifact uploaded to s3://${SPA_BUCKET}/${RELEASE_KEY}"
