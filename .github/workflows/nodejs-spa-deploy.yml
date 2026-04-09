@@ -23,7 +23,7 @@ on:
       spa_bucket:
         required: false
         type: string
-        default: "scala-uat-193044710768-voyager-spa"
+        default: "scala-uat-voyager-spa-193044710768"
       cloudfront_distribution_id:
         required: false
         type: string
