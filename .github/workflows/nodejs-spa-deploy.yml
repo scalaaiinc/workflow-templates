@@ -146,3 +146,4 @@ jobs:
           environment: ${{ inputs.environment }}
           context_file: ${{ steps.config_check.outputs.has_pat == 'true' && format('{0}/cdk.context.json', github.workspace) || '' }}
           auth_config_bucket: ${{ inputs.auth_config_bucket }}
+

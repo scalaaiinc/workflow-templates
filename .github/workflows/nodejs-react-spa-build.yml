@@ -78,7 +78,7 @@ jobs:
     outputs:
       release_artifact: ${{ steps.upload_release.outputs.release_artifact }}
       release_version: ${{ steps.upload_release.outputs.release_version }}
-
+      
     steps:
       - name: Setup shared CDK environment
         uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@main
@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           cd "$REPO_DIR"
-
+          
           # Read version from pyproject.toml [tool.scala.release] target-version
           RELEASE_VERSION=$(python3 -c 'import tomllib, pathlib; data = tomllib.loads(pathlib.Path("pyproject.toml").read_text()); print(data.get("tool", {}).get("scala", {}).get("release", {}).get("target-version", "0.0.0"))')
           echo "Resolved release version: ${RELEASE_VERSION}"
@@ -148,6 +148,7 @@ jobs:
           printf 'version=%s\ngit_commit=%s\ntimestamp=%s\nservice=%s\n' \
             "${RELEASE_VERSION}" "${GIT_HASH}" "${TIMESTAMP}" "${SERVICE_NAME}" \
             > /tmp/spa-package/voyager-spa/VERSION
+
 
           (cd /tmp/spa-package && zip -r /tmp/spa-release.zip voyager-spa)
           rm -rf /tmp/spa-package
