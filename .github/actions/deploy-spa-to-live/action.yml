@@ -54,7 +54,7 @@ runs:
       run: |
         SPA_BUCKET="${{ inputs.spa_bucket }}"
         ARCHIVE_KEY="archive/${DEPLOY_TIMESTAMP}-${{ inputs.release_artifact }}"
-        LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+        LIVE_COUNT=$(aws s3 ls "s3://${SPA_BUCKET}/${LIVE_PREFIX}" --recursive 2>/dev/null | wc -l | tr -d ' ') || LIVE_COUNT=0
         if [ "$LIVE_COUNT" -gt "0" ]; then
           echo "📦 Archiving current live content..."
           mkdir -p /tmp/spa-archive
@@ -113,25 +113,36 @@ runs:
         AWS_REGION="${{ inputs.aws_region }}"
         RESOLVED_DISTRIBUTION_ID="${{ inputs.cloudfront_distribution_id }}"
 
-        if [ -z "$RESOLVED_DISTRIBUTION_ID" ]; then
-          echo "🔄 Looking for CloudFront distribution..."
-          ORIGIN_DOMAIN_A="${SPA_BUCKET}.s3.amazonaws.com"
-          ORIGIN_DOMAIN_B="${SPA_BUCKET}.s3.${AWS_REGION}.amazonaws.com"
-
-          RESOLVED_DISTRIBUTION_ID=$(aws cloudfront list-distributions --output json | jq -r \
+        lookup_distribution() {
+          echo "🔄 Looking up CloudFront distribution for bucket ${SPA_BUCKET}..." >&2
+          local ORIGIN_DOMAIN_A="${SPA_BUCKET}.s3.amazonaws.com"
+          local ORIGIN_DOMAIN_B="${SPA_BUCKET}.s3.${AWS_REGION}.amazonaws.com"
+          aws cloudfront list-distributions --output json | jq -r \
             --arg domainA "$ORIGIN_DOMAIN_A" \
             --arg domainB "$ORIGIN_DOMAIN_B" \
-            '.DistributionList.Items[]? | select(any(.Origins.Items[]?; .DomainName == $domainA or .DomainName == $domainB)) | .Id' | head -n 1)
+            '.DistributionList.Items[]? | select(any(.Origins.Items[]?; .DomainName == $domainA or .DomainName == $domainB)) | .Id' | head -n 1
+        }
 
+        if [ -z "$RESOLVED_DISTRIBUTION_ID" ]; then
+          RESOLVED_DISTRIBUTION_ID=$(lookup_distribution)
+        fi
+
+        if [ -z "$RESOLVED_DISTRIBUTION_ID" ] || [ "$RESOLVED_DISTRIBUTION_ID" = "null" ]; then
+          echo "⚠️ No CloudFront distribution found for bucket ${SPA_BUCKET}. Skipping invalidation."
+          exit 0
+        fi
+
+        echo "Using CloudFront distribution: $RESOLVED_DISTRIBUTION_ID"
+        if ! aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*" 2>/dev/null; then
+          echo "⚠️ Provided distribution $RESOLVED_DISTRIBUTION_ID failed — attempting auto-discovery..."
+          RESOLVED_DISTRIBUTION_ID=$(lookup_distribution)
           if [ -z "$RESOLVED_DISTRIBUTION_ID" ] || [ "$RESOLVED_DISTRIBUTION_ID" = "null" ]; then
             echo "⚠️ No CloudFront distribution found for bucket ${SPA_BUCKET}. Skipping invalidation."
             exit 0
-          else
-            echo "Resolved CloudFront distribution ID: $RESOLVED_DISTRIBUTION_ID"
           fi
+          echo "Resolved CloudFront distribution: $RESOLVED_DISTRIBUTION_ID"
+          aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*"
         fi
-
-        aws cloudfront create-invalidation --distribution-id "$RESOLVED_DISTRIBUTION_ID" --paths "/${LIVE_PREFIX}*"
         echo "✅ CloudFront invalidation created"
 
     - name: Deployment summary
