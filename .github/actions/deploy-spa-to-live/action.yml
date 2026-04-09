@@ -99,7 +99,7 @@ runs:
 
     - name: Generate and upload auth config
       if: ${{ inputs.context_file != '' }}
-      uses: scalaaiinc/workflow-templates/.github/actions/generate-spa-config@feature/VOYAG-321
+      uses: scalaaiinc/workflow-templates/.github/actions/generate-spa-config@main
       with:
         client: ${{ inputs.client }}
         environment: ${{ inputs.environment }}
