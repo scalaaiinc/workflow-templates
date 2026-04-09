@@ -113,8 +113,20 @@ jobs:
           ref: feature/VOYAG-321
           path: .workflow-templates
 
+      - name: Check config secret availability
+        id: config_check
+        shell: bash
+        run: |
+          if [ -n "$CONFIG_PAT" ]; then
+            echo "has_pat=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pat=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          CONFIG_PAT: ${{ secrets.SCALA_ORG_RO_PAT }}
+
       - name: Merge client context config
-        if: ${{ secrets.SCALA_ORG_RO_PAT != '' }}
+        if: steps.config_check.outputs.has_pat == 'true'
         uses: ./.workflow-templates/.github/actions/merge-client-config
         with:
           config_repo_ref: ${{ inputs.config_repo_ref }}
@@ -133,5 +145,5 @@ jobs:
           cloudfront_distribution_id: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}
           client: ${{ inputs.client }}
           environment: ${{ inputs.environment }}
-          context_file: ${{ secrets.SCALA_ORG_RO_PAT != '' && format('{0}/cdk.context.json', github.workspace) || '' }}
+          context_file: ${{ steps.config_check.outputs.has_pat == 'true' && format('{0}/cdk.context.json', github.workspace) || '' }}
           auth_config_bucket: ${{ inputs.auth_config_bucket }}
