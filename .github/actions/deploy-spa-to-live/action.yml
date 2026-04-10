@@ -60,7 +60,7 @@ runs:
           mkdir -p /tmp/spa-archive
           aws s3 sync "s3://${SPA_BUCKET}/${LIVE_PREFIX}" /tmp/spa-archive/ --quiet
           (cd /tmp/spa-archive && zip -r /tmp/spa-backup.zip .)
-          aws s3 cp /tmp/spa-backup.zip "s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
+          aws s3 cp /tmp/spa-backup.zip "s3://${SPA_BUCKET}/${ARCHIVE_KEY}" --sse AES256
           rm -rf /tmp/spa-archive /tmp/spa-backup.zip
           echo "✅ Archived to s3://${SPA_BUCKET}/${ARCHIVE_KEY}"
         else
@@ -74,14 +74,16 @@ runs:
         echo "🚀 Deploying ${{ inputs.release_artifact }} to s3://${SPA_BUCKET}/${LIVE_PREFIX}"
         aws s3 sync "${{ inputs.spa_local_folder }}/" "s3://${SPA_BUCKET}/${LIVE_PREFIX}" \
           --exclude "index.html" \
-          --cache-control "public, max-age=31536000, immutable"
+          --cache-control "public, max-age=31536000, immutable" \
+          --sse AES256
 
     - name: Upload index.html (atomic switchover)
       shell: bash
       run: |
         SPA_BUCKET="${{ inputs.spa_bucket }}"
         aws s3 cp "${{ inputs.spa_local_folder }}/index.html" "s3://${SPA_BUCKET}/${LIVE_PREFIX}index.html" \
-          --cache-control "no-cache, no-store, must-revalidate"
+          --cache-control "no-cache, no-store, must-revalidate" \
+          --sse AES256
 
     - name: Remove orphaned assets
       shell: bash
