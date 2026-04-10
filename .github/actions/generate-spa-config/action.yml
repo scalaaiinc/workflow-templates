@@ -145,7 +145,8 @@ runs:
         # Upload to the auth-config bucket (bucket is versioned, overwrite is safe)
         aws s3 cp /tmp/auth-config.json "s3://${AUTH_CONFIG_BUCKET}/${CONFIG_FILENAME}" \
           --content-type "application/json" \
-          --cache-control "no-cache, no-store, must-revalidate"
+          --cache-control "no-cache, no-store, must-revalidate" \
+          --sse AES256
         rm -f /tmp/auth-config.json /tmp/auth-config-tmp.json
 
         echo "✅ Auth config uploaded to s3://${AUTH_CONFIG_BUCKET}/${CONFIG_FILENAME}"
