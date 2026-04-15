@@ -10,8 +10,9 @@ on:
         required: true
         type: string
       image_tag:
-        required: true
+        required: false
         type: string
+        default: ""
       aws_account:
         required: false
         type: string
@@ -73,8 +74,12 @@ jobs:
         shell: bash
         run: |
           echo "REPO_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
-          echo "Using IMAGE_TAG=${{ inputs.image_tag }}"
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
+            echo "Using IMAGE_TAG=${{ inputs.image_tag }}"
+          else
+            echo "No image_tag provided — using configuration-based imageTag"
+          fi
 
       - name: Install dependencies
         uses: scalaaiinc/workflow-templates/.github/actions/install-deps@main
