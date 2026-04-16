@@ -76,12 +76,13 @@ runs:
           --arg graphql_uri "$(jq -r "$VA.VITE_GRAPHQL_URI // \"\"" "$CONTEXT_FILE")" \
           --arg graphql_ws "$(jq -r "$VA.VITE_GRAPHQL_WS_URI // \"\"" "$CONTEXT_FILE")" \
           --arg recording_uri "$(jq -r "$VA.VITE_RECORDING_URI // \"\"" "$CONTEXT_FILE")" \
+          --arg help_ticket_uri "$(jq -r "$VA.VITE_HELP_TICKET_URI // \"\"" "$CONTEXT_FILE")" \
           --arg alb_hostname "$(jq -r "$VA.VITE_PUBLIC_ALB_HOSTNAME // \"\"" "$CONTEXT_FILE")" \
-          --arg ld_client_id "$(jq -r "$VA.VITE_LAUNCHDARKLY_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
+          --arg ld_client_id "$(jq -r "$VA.LAUNCHDARKLY_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
           '{
             CLIENT_ID: $client_id,
             CLIENT_NAME: $client_name,
-            ENVIRONMENT_NAME: $env_name,
+            ENVIRONMENT_NAME: $env_name,            
             OIDC_WELLKNOWN_URL: $oidc_wellknown,
             OIDC_TOKEN_URL: $oidc_token,
             OIDC_USERINFO_URL: $oidc_userinfo,
@@ -93,7 +94,8 @@ runs:
             OIDC_ORGANIZATION: $oidc_organization,
             GRAPHQL_URI: $graphql_uri,                            
             GRAPHQL_WS_URI: $graphql_ws,            
-            RECORDING_URI: $recording_uri,            
+            RECORDING_URI: $recording_uri,
+            HELP_TICKET_URI: $help_ticket_uri,            
             PUBLIC_ALB_HOSTNAME: $alb_hostname,
             LAUNCHDARKLY_CLIENT_ID: $ld_client_id,
             BRANDING: { logo: "", primaryColor: "", companyName: "" }
