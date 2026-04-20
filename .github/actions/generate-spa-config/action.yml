@@ -7,28 +7,28 @@ description: >
 
 inputs:
   client:
-    description: "Client name (e.g. scala)"
+    description: 'Client name (e.g. scala)'
     required: true
   environment:
-    description: "Environment name (e.g. uat)"
+    description: 'Environment name (e.g. uat)''
     required: true
   context_file:
-    description: "Path to the merged cdk.context.json"
+    description: 'Path to the merged cdk.context.json'
     required: true
   auth_config_bucket:
-    description: "Target S3 bucket for auth config. If empty, derived as {client}-{env}-{account}-auth-config."
+    description: 'Target S3 bucket for auth config. If empty, derived as {client}-{env}-{account}-auth-config.'
     required: false
-    default: ""
+    default: ''
 
 outputs:
   domain:
-    description: "The domain name resolved from core-infra dns_config"
+    description: 'The domain name resolved from core-infra dns_config'
     value: ${{ steps.generate.outputs.domain }}
   config_filename:
-    description: "The auth config filename (e.g. uat.scala.ai.json)"
+    description: 'The auth config filename (e.g. uat.scala.ai.json)'
     value: ${{ steps.generate.outputs.config_filename }}
   auth_config_bucket:
-    description: "The S3 bucket the config was uploaded to"
+    description: 'The S3 bucket the config was uploaded to'
     value: ${{ steps.generate.outputs.auth_config_bucket }}
 
 runs:
