@@ -7,32 +7,32 @@ description: >
 
 inputs:
   client:
-    description: 'Client name (e.g. scala)'
+    description: "Client name (e.g. scala)"
     required: true
   environment:
-    description: 'Environment name (e.g. uat)'
+    description: "Environment name (e.g. uat)"
     required: true
   context_file:
-    description: 'Path to the merged cdk.context.json'
+    description: "Path to the merged cdk.context.json"
     required: true
   auth_config_bucket:
-    description: 'Target S3 bucket for auth config. If empty, derived as {client}-{env}-{account}-auth-config.'
+    description: "Target S3 bucket for auth config. If empty, derived as {client}-{env}-{account}-auth-config."
     required: false
-    default: ''
+    default: ""
 
 outputs:
   domain:
-    description: 'The domain name resolved from core-infra dns_config'
+    description: "The domain name resolved from core-infra dns_config"
     value: ${{ steps.generate.outputs.domain }}
   config_filename:
-    description: 'The auth config filename (e.g. uat.scala.ai.json)'
+    description: "The auth config filename (e.g. uat.scala.ai.json)"
     value: ${{ steps.generate.outputs.config_filename }}
   auth_config_bucket:
-    description: 'The S3 bucket the config was uploaded to'
+    description: "The S3 bucket the config was uploaded to"
     value: ${{ steps.generate.outputs.auth_config_bucket }}
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - name: Generate and upload auth config
       id: generate
@@ -78,6 +78,7 @@ runs:
           --arg recording_uri "$(jq -r "$VA.VITE_RECORDING_URI // \"\"" "$CONTEXT_FILE")" \
           --arg help_ticket_uri "$(jq -r "$VA.VITE_HELP_TICKET_URI // \"\"" "$CONTEXT_FILE")" \
           --arg alb_hostname "$(jq -r "$VA.VITE_PUBLIC_ALB_HOSTNAME // \"\"" "$CONTEXT_FILE")" \
+          --arg ga_measurement_id "$(jq -r "$VA.VITE_GA_MEASUREMENT_ID // \"\"" "$CONTEXT_FILE")" \
           --arg ld_client_id "$(jq -r "$VA.LAUNCHDARKLY_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
           '{
             CLIENT_ID: $client_id,
@@ -98,6 +99,7 @@ runs:
             HELP_TICKET_URI: $help_ticket_uri,            
             PUBLIC_ALB_HOSTNAME: $alb_hostname,
             LAUNCHDARKLY_CLIENT_ID: $ld_client_id,
+            GA_MEASUREMENT_ID: $ga_measurement_id,
             BRANDING: { logo: "", primaryColor: "", companyName: "" }
           }' > /tmp/auth-config.json
 
