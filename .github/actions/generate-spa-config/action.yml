@@ -10,7 +10,7 @@ inputs:
     description: 'Client name (e.g. scala)'
     required: true
   environment:
-    description: 'Environment name (e.g. uat)''
+    description: 'Environment name (e.g. uat)'
     required: true
   context_file:
     description: 'Path to the merged cdk.context.json'
@@ -32,7 +32,7 @@ outputs:
     value: ${{ steps.generate.outputs.auth_config_bucket }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Generate and upload auth config
       id: generate
