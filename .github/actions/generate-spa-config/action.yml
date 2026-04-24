@@ -67,6 +67,7 @@ runs:
           --arg oidc_wellknown "$(jq -r "$VA.VITE_OIDC_WELLKNOWN_URL // \"\"" "$CONTEXT_FILE")" \
           --arg oidc_token "$(jq -r "$VA.VITE_OIDC_TOKEN_URL // \"\"" "$CONTEXT_FILE")" \
           --arg oidc_userinfo "$(jq -r "$VA.VITE_OIDC_USERINFO_URL // \"\"" "$CONTEXT_FILE")" \
+          --arg oidc_idp_connection_name "$(jq -r "$VA.VITE_IDP_CONNECTION_NAME // \"\"" "$CONTEXT_FILE")" \
           --arg oidc_authorize "$(jq -r "$VA.VITE_OIDC_AUTHORIZE_URL // \"\"" "$CONTEXT_FILE")" \
           --arg oidc_client_id "$(jq -r "$VA.VITE_OIDC_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
           --arg oidc_redirect "$(jq -r "$VA.VITE_OIDC_REDIRECT_URI // \"\"" "$CONTEXT_FILE")" \
@@ -88,6 +89,7 @@ runs:
             OIDC_TOKEN_URL: $oidc_token,
             OIDC_USERINFO_URL: $oidc_userinfo,
             OIDC_AUTHORIZE_URL: $oidc_authorize,
+            OIDC_IDP_CONNECTION: $oidc_idp_connection_name,
             OIDC_CLIENT_ID: $oidc_client_id,
             OIDC_REDIRECT_URI: $oidc_redirect,
             OIDC_SCOPES: $oidc_scopes,                      
