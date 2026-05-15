@@ -23,7 +23,7 @@ runs:
   using: composite
   steps:
     - name: Checkout config repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: scalaaiinc/client-configs-aws-cdk
         ref: ${{ inputs.config_repo_ref }}

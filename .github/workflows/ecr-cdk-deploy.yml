@@ -59,7 +59,7 @@ jobs:
           github_pat: ${{ secrets.GITHUB_PAT }}
 
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Merge client context config
         uses: scalaaiinc/workflow-templates/.github/actions/merge-client-config@main
@@ -89,7 +89,7 @@ jobs:
           package_manager: uv
 
       - name: Configure AWS credentials for deployment account
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account }}:role/cdk-hnb659fds-github-role-${{ inputs.aws_account }}-${{ inputs.aws_region }}
           role-session-name: github-actions-cdk-deploy

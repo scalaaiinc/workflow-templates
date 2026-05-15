@@ -33,7 +33,7 @@ jobs:
           cache: "npm"
 
       - name: Configure AWS Credentials for CodeArtifact
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
@@ -121,7 +121,7 @@ jobs:
           python-version: "3.13"
 
       - name: Configure AWS Credentials for CodeArtifact
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
@@ -243,7 +243,7 @@ jobs:
           python-version: "3.13"
 
       - name: Configure AWS Credentials for CodeArtifact
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1

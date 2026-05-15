@@ -88,7 +88,7 @@ jobs:
           github_pat: ${{ secrets.GITHUB_PAT }}
 
       - name: Checkout service repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set repository directory
         shell: bash
@@ -112,7 +112,7 @@ jobs:
           node_version: ${{ env.NODE_VERSION }}
 
       - name: Configure AWS credentials for deployment account
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/cdk-hnb659fds-github-role-${{ env.AWS_ACCOUNT }}-${{ env.AWS_REGION }}
           role-session-name: github-actions-spa-${{ env.ENVIRONMENT }}-deploy
