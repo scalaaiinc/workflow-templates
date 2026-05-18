@@ -1,0 +1,15 @@
+{
+  "environments": {
+    "lyric-prod": {
+      "core-infra": {
+        "dns_config": { "domain": "lyric.scala.ai" }
+      },
+      "voyager-app": {
+        "VITE_OIDC_CLIENT_ID": "89tllloKa2kmlFSwhXxWGM7dHVaWp6gp",
+        "VITE_OIDC_REDIRECT_URI": "https://lyric.scala.ai/auth/callback?provider=auth0",
+        "VITE_GRAPHQL_URI": "https://overridden.example.com/gql",
+        "VITE_PUBLIC_ALB_HOSTNAME": "alb.weird.example.com"
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "environments": {
+    "lyric-prod": {
+      "core-infra": {
+        "dns_config": { "domain": "lyric.scala.ai" }
+      },
+      "voyager-app": {
+        "VITE_OIDC_WELLKNOWN_URL": "https://scala-ai.us.auth0.com/.well-known/openid-configuration",
+        "VITE_OIDC_ORGANIZATION": "org_PlmXm7BO2fa1aijC",
+        "VITE_OIDC_CLIENT_ID": "89tllloKa2kmlFSwhXxWGM7dHVaWp6gp",
+        "VITE_OIDC_REDIRECT_URI": "https://lyric.scala.ai/auth/callback?provider=auth0",
+        "VITE_OIDC_SCOPES": "openid profile email offline_access",
+        "VITE_GA_MEASUREMENT_ID": "G-GB8WMCD6FD",
+        "LAUNCHDARKLY_CLIENT_ID": "69c59e5bcf0b5d0b823ebbf9"
+      }
+    }
+  }
+}

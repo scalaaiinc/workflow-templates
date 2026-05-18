@@ -5,6 +5,11 @@ description: >
   the target account's auth-config S3 bucket. The bucket is expected to
   be versioned, so previous configs are preserved automatically.
 
+  Most VITE_* values are derived from a single PROD_DOMAIN convention
+  (see scripts/generate-spa-auth-config.sh and VOYAG-409). Explicit
+  values in voyager-app.* always win over derivation, so existing
+  configs continue to work unchanged.
+
 inputs:
   client:
     description: 'Client name (e.g. scala)'
@@ -43,87 +48,24 @@ runs:
         CDK_ENV="${CLIENT}-${ENV}"
         CONTEXT_FILE="${{ inputs.context_file }}"
 
-        if [ ! -f "$CONTEXT_FILE" ]; then
-          echo "::error::cdk.context.json not found at $CONTEXT_FILE"
-          exit 1
+        # Build the auth config via the colocated generator. The
+        # script handles all PROD_DOMAIN derivation logic and is unit-
+        # tested under ./test/. We capture its DOMAIN/PROD_DOMAIN
+        # echoes here so the downstream upload step can name the file.
+        # Using $GITHUB_ACTION_PATH (no `..` traversal) keeps the
+        # action self-contained and movable.
+        SCRIPT="${{ github.action_path }}/lib/generate-spa-auth-config.sh"
+        if [ ! -x "$SCRIPT" ]; then
+          chmod +x "$SCRIPT" || true
         fi
 
-        # Read the domain from core-infra dns_config
-        DOMAIN=$(jq -r ".environments[\"$CDK_ENV\"][\"core-infra\"].dns_config.domain // \"\"" "$CONTEXT_FILE")
-        if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "null" ]; then
-          echo "::error::domain not found in core-infra.dns_config for environment $CDK_ENV"
-          exit 1
-        fi
-
-        # Voyager-app config block selector
-        VA=".environments[\"$CDK_ENV\"][\"voyager-app\"]"
-
-        # Build the runtime auth config JSON from the merged cdk.context.json
-        # The SPA fetches this at startup instead of using build-time VITE_ env vars
-        jq -n \
-          --arg client_id "$CLIENT-$ENV" \
-          --arg client_name "$(echo "$CLIENT" | sed 's/^./\U&/') $ENV" \
-          --arg env_name "$ENV" \
-          --arg oidc_wellknown "$(jq -r "$VA.VITE_OIDC_WELLKNOWN_URL // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_token "$(jq -r "$VA.VITE_OIDC_TOKEN_URL // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_userinfo "$(jq -r "$VA.VITE_OIDC_USERINFO_URL // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_idp_connection_name "$(jq -r "$VA.VITE_IDP_CONNECTION_NAME // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_authorize "$(jq -r "$VA.VITE_OIDC_AUTHORIZE_URL // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_client_id "$(jq -r "$VA.VITE_OIDC_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_redirect "$(jq -r "$VA.VITE_OIDC_REDIRECT_URI // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_scopes "$(jq -r "$VA.VITE_OIDC_SCOPES // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_audience "$(jq -r "$VA.VITE_OIDC_AUDIENCE // \"\"" "$CONTEXT_FILE")" \
-          --arg oidc_organization "$(jq -r "$VA.VITE_OIDC_ORGANIZATION // \"\"" "$CONTEXT_FILE")" \
-          --arg graphql_uri "$(jq -r "$VA.VITE_GRAPHQL_URI // \"\"" "$CONTEXT_FILE")" \
-          --arg graphql_ws "$(jq -r "$VA.VITE_GRAPHQL_WS_URI // \"\"" "$CONTEXT_FILE")" \
-          --arg recording_uri "$(jq -r "$VA.VITE_RECORDING_URI // \"\"" "$CONTEXT_FILE")" \
-          --arg help_ticket_uri "$(jq -r "$VA.VITE_HELP_TICKET_URI // \"\"" "$CONTEXT_FILE")" \
-          --arg alb_hostname "$(jq -r "$VA.VITE_PUBLIC_ALB_HOSTNAME // \"\"" "$CONTEXT_FILE")" \
-          --arg ga_measurement_id "$(jq -r "$VA.VITE_GA_MEASUREMENT_ID // \"\"" "$CONTEXT_FILE")" \
-          --arg ld_client_id "$(jq -r "$VA.LAUNCHDARKLY_CLIENT_ID // \"\"" "$CONTEXT_FILE")" \
-          '{
-            CLIENT_ID: $client_id,
-            CLIENT_NAME: $client_name,
-            ENVIRONMENT_NAME: $env_name,            
-            OIDC_WELLKNOWN_URL: $oidc_wellknown,
-            OIDC_TOKEN_URL: $oidc_token,
-            OIDC_USERINFO_URL: $oidc_userinfo,
-            OIDC_AUTHORIZE_URL: $oidc_authorize,
-            OIDC_IDP_CONNECTION: $oidc_idp_connection_name,
-            OIDC_CLIENT_ID: $oidc_client_id,
-            OIDC_REDIRECT_URI: $oidc_redirect,
-            OIDC_SCOPES: $oidc_scopes,                      
-            OIDC_AUDIENCE: $oidc_audience,
-            OIDC_ORGANIZATION: $oidc_organization,
-            GRAPHQL_URI: $graphql_uri,                            
-            GRAPHQL_WS_URI: $graphql_ws,            
-            RECORDING_URI: $recording_uri,
-            HELP_TICKET_URI: $help_ticket_uri,            
-            PUBLIC_ALB_HOSTNAME: $alb_hostname,
-            LAUNCHDARKLY_CLIENT_ID: $ld_client_id,
-            GA_MEASUREMENT_ID: $ga_measurement_id,
-            BRANDING: { logo: "", primaryColor: "", companyName: "" }
-          }' > /tmp/auth-config.json
-
-        # Append any environment-prefixed URI overrides (PLAYGROUND, PREVIEW, PRODUCTION, etc.)
-        for ENV_SUFFIX in PLAYGROUND PREVIEW PRODUCTION; do
-          GQL=$(jq -r "$VA.VITE_GRAPHQL_URI_${ENV_SUFFIX} // \"\"" "$CONTEXT_FILE")
-          GQL_WS=$(jq -r "$VA.VITE_GRAPHQL_WS_URI_${ENV_SUFFIX} // \"\"" "$CONTEXT_FILE")
-          REC=$(jq -r "$VA.VITE_RECORDING_URI_${ENV_SUFFIX} // \"\"" "$CONTEXT_FILE")
-
-          if [ -n "$GQL" ] && [ "$GQL" != "" ]; then
-            jq --arg v "$GQL" ".GRAPHQL_URI_${ENV_SUFFIX} = \$v" /tmp/auth-config.json > /tmp/auth-config-tmp.json \
-              && mv /tmp/auth-config-tmp.json /tmp/auth-config.json
-          fi
-          if [ -n "$GQL_WS" ] && [ "$GQL_WS" != "" ]; then
-            jq --arg v "$GQL_WS" ".GRAPHQL_WS_URI_${ENV_SUFFIX} = \$v" /tmp/auth-config.json > /tmp/auth-config-tmp.json \
-              && mv /tmp/auth-config-tmp.json /tmp/auth-config.json
-          fi
-          if [ -n "$REC" ] && [ "$REC" != "" ]; then
-            jq --arg v "$REC" ".RECORDING_DOWNLOAD_ENDPOINT_${ENV_SUFFIX} = \$v" /tmp/auth-config.json > /tmp/auth-config-tmp.json \
-              && mv /tmp/auth-config-tmp.json /tmp/auth-config.json
-          fi
-        done
+        OUT=/tmp/auth-config.json
+        SCRIPT_VARS=$(CONTEXT_FILE="$CONTEXT_FILE" CDK_ENV="$CDK_ENV" \
+          CLIENT="$CLIENT" ENV="$ENV" OUTPUT_FILE="$OUT" \
+          "$SCRIPT")
+        # Eval the trailing DOMAIN=…/PROD_DOMAIN=… echoes to surface
+        # them as shell vars in this step.
+        eval "$SCRIPT_VARS"
 
         CONFIG_FILENAME="${DOMAIN}.json"
 
