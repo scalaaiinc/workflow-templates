@@ -1,0 +1,13 @@
+{
+  "environments": {
+    "lyric-preview": {
+      "core-infra": {
+        "dns_config": { "domain": "preview.lyric.scala.ai" }
+      },
+      "voyager-app": {
+        "PROD_DOMAIN": "lyric.scala.ai",
+        "VITE_OIDC_CLIENT_ID": "client-preview-1"
+      }
+    }
+  }
+}
