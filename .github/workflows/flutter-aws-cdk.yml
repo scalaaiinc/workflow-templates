@@ -3,6 +3,10 @@ name: Flutter CI/CD with AWS CDK
 on:
   workflow_call:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   # =================================================================
   #  Continuous Integration (CI) Job
@@ -89,11 +93,11 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure AWS Credentials for Playground
-        uses: scalaaiinc/configure-aws-credentials@main
+        uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.PLAYGROUND_CICD_AWS_KEY }}
-          aws-secret-access-key: ${{ secrets.PLAYGROUND_CICD_AWS_SECRET }}
+          role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
+          role-session-name: GHA-${{ github.job }}-playground-${{ github.run_id }}
 
       - uses: scalaaiinc/setup-qemu-action@master
         with:
@@ -208,11 +212,11 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure AWS Credentials for Live
-        uses: scalaaiinc/configure-aws-credentials@main
+        uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.LIVE_CICD_AWS_KEY }}
-          aws-secret-access-key: ${{ secrets.LIVE_CICD_AWS_SECRET }}
+          role-to-assume: arn:aws:iam::579107446826:role/cdk-hnb659fds-github-role-579107446826-us-east-1
           aws-region: us-east-1
+          role-session-name: GHA-${{ github.job }}-live-${{ github.run_id }}
 
       - uses: scalaaiinc/setup-qemu-action@master
         with:
