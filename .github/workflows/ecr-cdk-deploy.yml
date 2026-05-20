@@ -59,7 +59,7 @@ jobs:
           github_pat: ${{ secrets.GITHUB_PAT }}
 
       - name: Checkout repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Merge client context config
         uses: scalaaiinc/workflow-templates/.github/actions/merge-client-config@main
