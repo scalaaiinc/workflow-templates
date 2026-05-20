@@ -69,7 +69,7 @@ jobs:
           uv_version: "0.9.18"
 
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set repo directory
         shell: bash
@@ -95,10 +95,10 @@ jobs:
           UV_INDEX_SCALA_CODEARTIFACT_PASSWORD: ${{ env.UV_INDEX_SCALA_CODEARTIFACT_PASSWORD }}
 
       - name: Setup QEMU for cross-platform builds
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Set Docker image name
         shell: bash
