@@ -92,10 +92,11 @@ jobs:
     secrets: inherit
     # Optional overrides:
     # with:
-    #   jira_key_pattern: 'VOYAG-[0-9]+'   # default
-    #   release_branch: main                # default; only main releases notify
-    #   include_prereleases: false          # default; skip prereleases
-    #   fail_if_no_keys: false              # default
+    #   jira_key_pattern: 'VOYAG-[0-9]+'                       # default
+    #   release_branch: main                                    # default; only main releases notify
+    #   include_prereleases: false                              # default; skip prereleases
+    #   prerelease_tag_pattern: '-(alpha|beta|rc)([^a-zA-Z]|$)' # default; semver -alpha/-beta/-rc
+    #   fail_if_no_keys: false                                  # default
 ```
 
 ### Behavior
@@ -107,15 +108,25 @@ jobs:
   --is-ancestor` check so releases pinned to a SHA on `main` still count.
   Off-branch releases (e.g. cut from a release branch or a feature branch)
   produce a clean no-op run with a note in the step summary.
+- **Prerelease gate.** Prereleases are skipped both as the *trigger* and as
+  candidates when picking the previous release, so the diff always snaps
+  back to the last truly-stable release. Two checks are applied (both must
+  pass for the release to count as official):
+    - GitHub's `release.prerelease` flag must be `false`.
+    - The tag must NOT match `prerelease_tag_pattern` (default
+      `-(alpha|beta|rc)([^a-zA-Z]|$)`, case-insensitive). This is a
+      defensive belt for releases mis-flagged in the GitHub UI — e.g.
+      `v1.2.3-rc.1` published with the prerelease box unchecked is still
+      treated as a prerelease.
+  Set `include_prereleases: true` to disable both checks and notify on every
+  release. Override `prerelease_tag_pattern` if your conventions differ
+  (e.g. `-(dev|preview|snapshot)([^a-zA-Z]|$)`).
 - **Range.** The workflow finds the previously published release via the
-  GitHub API (sorted by `published_at`, drafts excluded, prereleases excluded
-  unless `include_prereleases: true`), then walks `git log <prev>..<current>`
-  to gather commit messages. If there is no prior release, it scans the
-  full history reachable from the current tag.
+  GitHub API (sorted by `published_at`, drafts excluded, prereleases
+  excluded by both gates above unless `include_prereleases: true`), then
+  walks `git log <prev>..<current>` to gather commit messages. If there is
+  no prior official release, it scans the full history reachable from the
+  current tag.
 - **Sources scanned.** Release name, release body, and every commit message
   in the range. The step summary shows a per-source breakdown with the
   commit count so you can verify what got picked up.
-- **Prereleases.** By default, prereleases (`prerelease: true`) are skipped
-  entirely — both as triggers and as "previous release" anchors — so the
-  diff always covers stable→stable. Set `include_prereleases: true` to
-  notify on every release.

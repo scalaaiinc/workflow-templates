@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: 'main'
+      prerelease_tag_pattern:
+        description: "Case-insensitive regex applied to tag names to identify prereleases by suffix (in addition to GitHub's `prerelease` flag). Used both to skip the current event and to exclude candidates when picking the previous release. Default matches semver -alpha/-beta/-rc identifiers (e.g. `v1.2.3-alpha.1`, `v1.2.3-rc1`)."
+        required: false
+        type: string
+        default: '-(alpha|beta|rc)([^a-zA-Z]|$)'
     secrets:
       JIRA_WEBHOOK_URL:
         description: "JIRA Automation 'Incoming webhook' URL. Stored as a repo or org secret."
@@ -60,8 +65,43 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Verify release is an official version (not a prerelease)
+        id: verify_kind
+        env:
+          INCLUDE_PRERELEASES: ${{ inputs.include_prereleases }}
+          PRERELEASE_TAG_PATTERN: ${{ inputs.prerelease_tag_pattern }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE_FLAG: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+
+          mark_ok() { echo "ok=true"  >> "$GITHUB_OUTPUT"; }
+          mark_no() { echo "ok=false" >> "$GITHUB_OUTPUT"; }
+
+          if [ "$INCLUDE_PRERELEASES" = "true" ]; then
+            echo "include_prereleases=true; skipping prerelease filter."
+            mark_ok
+            exit 0
+          fi
+
+          # Defensive belt: even if the GitHub `prerelease` flag is false, we
+          # treat tags matching the configured suffix pattern as prereleases.
+          # This handles releases that were created without the flag set.
+          IS_PRERELEASE_BY_TAG="$(printf '%s' "\"$RELEASE_TAG\"" \
+            | jq -r --arg re "$PRERELEASE_TAG_PATTERN" 'test($re; "i")')"
+
+          if [ "$RELEASE_PRERELEASE_FLAG" = "true" ] || [ "$IS_PRERELEASE_BY_TAG" = "true" ]; then
+            echo "::notice::Release ${RELEASE_TAG} is a prerelease (flag=${RELEASE_PRERELEASE_FLAG}, matches_pattern=${IS_PRERELEASE_BY_TAG}); skipping JIRA notification."
+            mark_no
+            exit 0
+          fi
+
+          echo "Release ${RELEASE_TAG} is an official version; proceeding."
+          mark_ok
+
       - name: Verify release is on ${{ inputs.release_branch }}
         id: verify_branch
+        if: steps.verify_kind.outputs.ok == 'true'
         env:
           RELEASE_BRANCH: ${{ inputs.release_branch }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -105,6 +145,7 @@ jobs:
           REPO: ${{ github.repository }}
           CURRENT_TAG: ${{ github.event.release.tag_name }}
           INCLUDE_PRERELEASES: ${{ inputs.include_prereleases }}
+          PRERELEASE_TAG_PATTERN: ${{ inputs.prerelease_tag_pattern }}
         run: |
           set -euo pipefail
 
@@ -117,15 +158,30 @@ jobs:
           # one purely from published_at ordering, not creation/draft order.
           ALL_RELEASES_JSON="$(gh api "repos/${REPO}/releases?per_page=100" --paginate)"
 
+          # When skipping prereleases, exclude both:
+          #   * releases with the GitHub `prerelease` flag set, AND
+          #   * releases whose tag matches the prerelease suffix pattern
+          #     (defensive against mis-flagged releases). This is what makes
+          #     the diff snap back to the last truly-stable release.
           if [ "$INCLUDE_PRERELEASES" = "true" ]; then
-            FILTER='[.[] | select(.draft==false) | select(.tag_name != $cur) | select(.published_at != null)]'
+            FILTER='[.[]
+              | select(.draft==false)
+              | select(.tag_name != $cur)
+              | select(.published_at != null)]'
           else
-            FILTER='[.[] | select(.draft==false) | select(.prerelease==false) | select(.tag_name != $cur) | select(.published_at != null)]'
+            FILTER='[.[]
+              | select(.draft==false)
+              | select(.prerelease==false)
+              | select((.tag_name | test($prerelease_re; "i")) | not)
+              | select(.tag_name != $cur)
+              | select(.published_at != null)]'
           fi
 
           PREV_TAG="$(printf '%s' "$ALL_RELEASES_JSON" \
-            | jq -r --arg cur "$CURRENT_TAG" \
-              "$FILTER | sort_by(.published_at) | last | .tag_name // empty")"
+            | jq -r \
+                --arg cur "$CURRENT_TAG" \
+                --arg prerelease_re "$PRERELEASE_TAG_PATTERN" \
+                "$FILTER | sort_by(.published_at) | last | .tag_name // empty")"
 
           echo "Current release : ${CURRENT_TAG}"
           if [ -z "${PREV_TAG:-}" ]; then
@@ -310,13 +366,16 @@ jobs:
       - name: Summary
         if: always()
         env:
+          KIND_OK: ${{ steps.verify_kind.outputs.ok }}
           BRANCH_OK: ${{ steps.verify_branch.outputs.ok }}
           RELEASE_BRANCH: ${{ inputs.release_branch }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE_FLAG: ${{ github.event.release.prerelease }}
           TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
           PREVIOUS_TAG: ${{ steps.resolve.outputs.previous_tag }}
           RANGE: ${{ steps.collect.outputs.range }}
           JIRA_KEY_PATTERN: ${{ inputs.jira_key_pattern }}
+          PRERELEASE_TAG_PATTERN: ${{ inputs.prerelease_tag_pattern }}
           ISSUE_KEYS: ${{ steps.collect.outputs.issue_keys }}
           NAME_KEYS: ${{ steps.collect.outputs.name_keys }}
           BODY_KEYS: ${{ steps.collect.outputs.body_keys }}
@@ -327,7 +386,11 @@ jobs:
           {
             echo "### JIRA release notification"
             echo ""
-            echo "- Release : \`${RELEASE_TAG}\` (target_commitish: \`${TARGET_COMMITISH:-<empty>}\`)"
+            echo "- Release : \`${RELEASE_TAG}\` (target_commitish: \`${TARGET_COMMITISH:-<empty>}\`, prerelease flag: \`${RELEASE_PRERELEASE_FLAG:-false}\`)"
+            if [ "${KIND_OK:-false}" != "true" ]; then
+              echo "- **Skipped**: release matches prerelease pattern \`${PRERELEASE_TAG_PATTERN}\` or has the prerelease flag set."
+              exit 0
+            fi
             echo "- Required branch: \`${RELEASE_BRANCH}\`"
             if [ "${BRANCH_OK:-false}" != "true" ]; then
               echo "- **Skipped**: release is not on \`${RELEASE_BRANCH}\`."
