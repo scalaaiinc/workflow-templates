@@ -152,7 +152,7 @@ jobs:
 
           (cd /tmp/spa-package && zip -r /tmp/spa-release.zip voyager-spa)
           rm -rf /tmp/spa-package
-          aws s3 cp /tmp/spa-release.zip "s3://${SPA_BUCKET}/${RELEASE_KEY}"
+          aws s3 cp /tmp/spa-release.zip "s3://${SPA_BUCKET}/${RELEASE_KEY}" --sse AES256
           rm -f /tmp/spa-release.zip
 
           echo "release_artifact=${RELEASE_FILENAME}" >> "$GITHUB_OUTPUT"
