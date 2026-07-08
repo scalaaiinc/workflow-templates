@@ -96,6 +96,7 @@ OIDC_AUDIENCE=$(resolve   "$(read_va VITE_OIDC_AUDIENCE)"             "https://$
 HELP_TICKET_URI=$(resolve "$(read_va VITE_HELP_TICKET_URI)"           "https://${PROD_DOMAIN}/ticket")
 ALB_HOSTNAME=$(resolve    "$(read_va VITE_PUBLIC_ALB_HOSTNAME)"       "services.${PROD_DOMAIN}")
 RECORDING_URI=$(resolve   "$(read_va VITE_RECORDING_URI)"             "https://${PROD_DOMAIN}/recordings/download")
+PULSE_AGENT_BASE_URI=$(resolve "$(read_va PULSE_AGENT_BASE_URI)"     "https://${PROD_DOMAIN}/agent/019e4340-e54c-73ea-8000-0000000000cb")
 
 # Playground variants follow the same pattern but with a "playground."
 # subdomain prefix. PREVIEW / PRODUCTION variants stay explicit-only —
@@ -147,6 +148,7 @@ jq -n \
   --arg alb_hostname       "$ALB_HOSTNAME" \
   --arg ga_measurement_id  "$GA_MEASUREMENT_ID" \
   --arg ld_client_id       "$LD_CLIENT_ID" \
+  --arg pulse_agent_base_uri "$PULSE_AGENT_BASE_URI" \
   '{
     CLIENT_ID:              $client_id,
     CLIENT_NAME:            $client_name,
@@ -168,6 +170,7 @@ jq -n \
     PUBLIC_ALB_HOSTNAME:    $alb_hostname,
     LAUNCHDARKLY_CLIENT_ID: $ld_client_id,
     GA_MEASUREMENT_ID:      $ga_measurement_id,
+    PULSE_AGENT_BASE_URI:   $pulse_agent_base_uri,
     BRANDING:               { logo: "", primaryColor: "", companyName: "" }
   }' > "$TMP_JSON"
 
