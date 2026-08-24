@@ -194,8 +194,24 @@ jobs:
           ECR_REPO_PRIMARY="${{ env.CDK_BOOTSTRAP_ACCOUNT }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/cdk-hnb659fds-central-container-${{ env.CDK_BOOTSTRAP_ACCOUNT }}-${{ inputs.aws_region }}"
 
           cp ~/.npmrc .npmrc
+          # IMAGE_VERSION is the version computed above for the ECR tags, handed
+          # to the build so a Dockerfile can compile it into the binary. Without
+          # it the version was known here and never reached the compiler, so Go
+          # services stamping -ldflags "-X ...buildinfo.Version=${IMAGE_VERSION}"
+          # fell back to their ARG default and every released image reported
+          # itself as "dev" (VOYAG-1656). Release promotion only retags a
+          # manifest, so nothing downstream could correct it.
+          #
+          # $VERSION, not $DOCKER_SAFE_VERSION: this is a semantic version for a
+          # binary to report, not a tag, and it matches what a Dockerfile reads
+          # straight out of pyproject when no build arg is passed. Using the
+          # sanitized form would make those two paths disagree.
+          #
+          # Safe for images that do not declare the ARG — BuildKit treats an
+          # unconsumed build arg as a warning, not an error (verified).
           docker buildx build \
             --platform "${{ inputs.arch }}" \
+            --build-arg IMAGE_VERSION="$VERSION" \
             --secret id=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD,env=UV_INDEX_SCALA_CODEARTIFACT_PASSWORD \
             --secret id=github_pat,env=GITHUB_PAT \
             --push \
