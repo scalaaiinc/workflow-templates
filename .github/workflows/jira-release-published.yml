@@ -1,0 +1,409 @@
+name: Notify JIRA on Release Published
+
+# Reusable workflow: when a GitHub release is published, gather every JIRA
+# issue key (default pattern: VOYAG-N) referenced anywhere in the release
+# range — i.e. the release name, body, and every commit reachable from the
+# new tag but not from the previously published release — then POST the
+# combined unique list to a JIRA Automation incoming webhook so a single rule
+# can fan out per-issue actions (e.g. add a "shipped-in:<tag>" label,
+# transition to Done, comment with the release URL, etc.).
+#
+# Use this for "what shipped in this release" automation. For per-PR JIRA
+# linking on merge, prefer the native GitHub for Jira app + a JIRA Automation
+# rule with trigger "Pull request merged" — no GHA needed for that case.
+
+on:
+  workflow_call:
+    inputs:
+      jira_key_pattern:
+        description: "Regex used to extract JIRA issue keys. Default matches VOYAG-N."
+        required: false
+        type: string
+        default: 'VOYAG-[0-9]+'
+      include_prereleases:
+        description: "When true, prereleases count as valid 'previous release' anchors and as valid current releases. When false, prereleases are skipped when picking the previous release (the diff goes back to the last stable)."
+        required: false
+        type: boolean
+        default: false
+      fail_if_no_keys:
+        description: "Fail the job if no JIRA keys are found in the release range."
+        required: false
+        type: boolean
+        default: false
+      release_branch:
+        description: "Only notify when the release was cut from this branch (matched against `release.target_commitish`, with a fallback git-ancestry check for releases pinned to a SHA). Default: main."
+        required: false
+        type: string
+        default: 'main'
+      prerelease_tag_pattern:
+        description: "Case-insensitive regex applied to tag names to identify prereleases by suffix (in addition to GitHub's `prerelease` flag). Used both to skip the current event and to exclude candidates when picking the previous release. Default matches semver -alpha/-beta/-rc identifiers (e.g. `v1.2.3-alpha.1`, `v1.2.3-rc1`)."
+        required: false
+        type: string
+        default: '-(alpha|beta|rc)([^a-zA-Z]|$)'
+    secrets:
+      JIRA_WEBHOOK_URL:
+        description: "JIRA Automation 'Incoming webhook' URL. Stored as a repo or org secret."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  notify-jira:
+    name: Notify JIRA of release contents
+    runs-on: ubuntu-latest
+    # Skip prereleases by default unless the consumer opted in. The
+    # release-branch gate is enforced by the "Verify release is on <branch>"
+    # step below so we can handle both target_commitish=<branch> (common) and
+    # target_commitish=<sha-on-branch> (edge) without dropping events.
+    if: ${{ inputs.include_prereleases || github.event.release.prerelease == false }}
+
+    steps:
+      - name: Check out code with full history and tags
+        uses: scalaaiinc/checkout@main
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify release is an official version (not a prerelease)
+        id: verify_kind
+        env:
+          INCLUDE_PRERELEASES: ${{ inputs.include_prereleases }}
+          PRERELEASE_TAG_PATTERN: ${{ inputs.prerelease_tag_pattern }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE_FLAG: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+
+          mark_ok() { echo "ok=true"  >> "$GITHUB_OUTPUT"; }
+          mark_no() { echo "ok=false" >> "$GITHUB_OUTPUT"; }
+
+          if [ "$INCLUDE_PRERELEASES" = "true" ]; then
+            echo "include_prereleases=true; skipping prerelease filter."
+            mark_ok
+            exit 0
+          fi
+
+          # Defensive belt: even if the GitHub `prerelease` flag is false, we
+          # treat tags matching the configured suffix pattern as prereleases.
+          # This handles releases that were created without the flag set.
+          IS_PRERELEASE_BY_TAG="$(printf '%s' "\"$RELEASE_TAG\"" \
+            | jq -r --arg re "$PRERELEASE_TAG_PATTERN" 'test($re; "i")')"
+
+          if [ "$RELEASE_PRERELEASE_FLAG" = "true" ] || [ "$IS_PRERELEASE_BY_TAG" = "true" ]; then
+            echo "::notice::Release ${RELEASE_TAG} is a prerelease (flag=${RELEASE_PRERELEASE_FLAG}, matches_pattern=${IS_PRERELEASE_BY_TAG}); skipping JIRA notification."
+            mark_no
+            exit 0
+          fi
+
+          echo "Release ${RELEASE_TAG} is an official version; proceeding."
+          mark_ok
+
+      - name: Verify release is on ${{ inputs.release_branch }}
+        id: verify_branch
+        if: steps.verify_kind.outputs.ok == 'true'
+        env:
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+        run: |
+          set -euo pipefail
+
+          mark_ok() { echo "ok=true"  >> "$GITHUB_OUTPUT"; }
+          mark_no() { echo "ok=false" >> "$GITHUB_OUTPUT"; }
+
+          # Fast path: target_commitish equals the configured branch name
+          # (this is what GitHub stores when the release is created from a
+          # branch via the UI, the API, or `gh release create --target`).
+          if [ "$TARGET_COMMITISH" = "$RELEASE_BRANCH" ]; then
+            echo "Release ${RELEASE_TAG} target_commitish == ${RELEASE_BRANCH}; proceeding."
+            mark_ok
+            exit 0
+          fi
+
+          # Fallback path: target_commitish is a SHA (or some other ref).
+          # Confirm the release tag's commit is reachable from origin/<branch>.
+          # If reachable, the release was cut from a commit that is on the
+          # branch, which satisfies "released from <branch>".
+          git fetch --tags --force origin "$RELEASE_BRANCH" || true
+
+          if git merge-base --is-ancestor "refs/tags/${RELEASE_TAG}" "origin/${RELEASE_BRANCH}" 2>/dev/null \
+             || git merge-base --is-ancestor "${RELEASE_TAG}" "origin/${RELEASE_BRANCH}" 2>/dev/null; then
+            echo "Release ${RELEASE_TAG} is reachable from origin/${RELEASE_BRANCH} (target_commitish=${TARGET_COMMITISH:-<empty>}); proceeding."
+            mark_ok
+            exit 0
+          fi
+
+          echo "::notice::Release ${RELEASE_TAG} (target_commitish=${TARGET_COMMITISH:-<empty>}) is not on ${RELEASE_BRANCH}; skipping JIRA notification."
+          mark_no
+
+      - name: Resolve current and previous release tags
+        id: resolve
+        if: steps.verify_branch.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_TAG: ${{ github.event.release.tag_name }}
+          INCLUDE_PRERELEASES: ${{ inputs.include_prereleases }}
+          PRERELEASE_TAG_PATTERN: ${{ inputs.prerelease_tag_pattern }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CURRENT_TAG:-}" ]; then
+            echo "::error::No release tag found in the workflow event payload."
+            exit 1
+          fi
+
+          # Pull the full release list (paginated) so we can pick the previous
+          # one purely from published_at ordering, not creation/draft order.
+          ALL_RELEASES_JSON="$(gh api "repos/${REPO}/releases?per_page=100" --paginate)"
+
+          # When skipping prereleases, exclude both:
+          #   * releases with the GitHub `prerelease` flag set, AND
+          #   * releases whose tag matches the prerelease suffix pattern
+          #     (defensive against mis-flagged releases). This is what makes
+          #     the diff snap back to the last truly-stable release.
+          if [ "$INCLUDE_PRERELEASES" = "true" ]; then
+            FILTER='[.[]
+              | select(.draft==false)
+              | select(.tag_name != $cur)
+              | select(.published_at != null)]'
+          else
+            FILTER='[.[]
+              | select(.draft==false)
+              | select(.prerelease==false)
+              | select((.tag_name | test($prerelease_re; "i")) | not)
+              | select(.tag_name != $cur)
+              | select(.published_at != null)]'
+          fi
+
+          PREV_TAG="$(printf '%s' "$ALL_RELEASES_JSON" \
+            | jq -r \
+                --arg cur "$CURRENT_TAG" \
+                --arg prerelease_re "$PRERELEASE_TAG_PATTERN" \
+                "$FILTER | sort_by(.published_at) | last | .tag_name // empty")"
+
+          echo "Current release : ${CURRENT_TAG}"
+          if [ -z "${PREV_TAG:-}" ]; then
+            echo "Previous release: <none — first release or no prior published release matches filter>"
+          else
+            echo "Previous release: ${PREV_TAG}"
+          fi
+
+          {
+            echo "current_tag=${CURRENT_TAG}"
+            echo "previous_tag=${PREV_TAG}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect JIRA issue keys from release range
+        id: collect
+        if: steps.verify_branch.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JIRA_KEY_PATTERN: ${{ inputs.jira_key_pattern }}
+          CURRENT_TAG: ${{ steps.resolve.outputs.current_tag }}
+          PREVIOUS_TAG: ${{ steps.resolve.outputs.previous_tag }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          set -euo pipefail
+
+          # Extract every regex match from a string, dedupe (first-seen order),
+          # join with commas. Returns empty string when no matches.
+          extract_keys() {
+            printf '%s' "${1:-}" \
+              | grep -oE "$JIRA_KEY_PATTERN" \
+              | awk '!seen[$0]++' \
+              | paste -sd, - \
+              || true
+          }
+
+          # Make sure both tags are locally available. The release tag was just
+          # pushed; the previous tag may or may not be present depending on
+          # checkout depth, so re-fetch tags defensively.
+          git fetch --tags --force origin || true
+
+          # Range is "<prev>..<current>" — commits reachable from current but
+          # not from prev. If there is no previous release, walk the entire
+          # history reachable from the current tag (i.e. first release ever).
+          if [ -n "${PREVIOUS_TAG:-}" ]; then
+            if ! git rev-parse --verify --quiet "refs/tags/${PREVIOUS_TAG}" >/dev/null \
+                && ! git rev-parse --verify --quiet "${PREVIOUS_TAG}" >/dev/null; then
+              echo "::warning::Previous tag ${PREVIOUS_TAG} not found in local refs after fetch; falling back to full history."
+              RANGE="${CURRENT_TAG}"
+            else
+              RANGE="${PREVIOUS_TAG}..${CURRENT_TAG}"
+            fi
+          else
+            RANGE="${CURRENT_TAG}"
+          fi
+
+          # Verify current tag is reachable.
+          if ! git rev-parse --verify --quiet "refs/tags/${CURRENT_TAG}" >/dev/null \
+              && ! git rev-parse --verify --quiet "${CURRENT_TAG}" >/dev/null; then
+            echo "::error::Current release tag ${CURRENT_TAG} not found in local refs."
+            exit 1
+          fi
+
+          COMMIT_MESSAGES="$(git log "$RANGE" --format=%B 2>/dev/null || true)"
+          COMMIT_COUNT="$(git rev-list --count "$RANGE" 2>/dev/null || echo 0)"
+
+          COMMIT_KEYS="$(extract_keys "$COMMIT_MESSAGES")"
+          NAME_KEYS="$(extract_keys "${RELEASE_NAME:-}")"
+          BODY_KEYS="$(extract_keys "${RELEASE_BODY:-}")"
+
+          # Combine all sources, dedupe across sources, preserve first-seen order.
+          ALL_KEYS="$(
+            {
+              printf '%s\n' "$NAME_KEYS"
+              printf '%s\n' "$BODY_KEYS"
+              printf '%s\n' "$COMMIT_KEYS"
+            } \
+              | tr ',' '\n' \
+              | grep -vE '^[[:space:]]*$' \
+              | awk '!seen[$0]++' \
+              | paste -sd, - \
+              || true
+          )"
+
+          echo "JIRA key extraction breakdown:"
+          echo "  pattern        : $JIRA_KEY_PATTERN"
+          echo "  range          : ${RANGE}"
+          echo "  release name   : ${NAME_KEYS:-<none>}"
+          echo "  release body   : ${BODY_KEYS:-<none>}"
+          echo "  commits (${COMMIT_COUNT} scanned): ${COMMIT_KEYS:-<none>}"
+          echo "  combined unique: ${ALL_KEYS:-<none>}"
+
+          {
+            echo "issue_keys=${ALL_KEYS}"
+            echo "name_keys=${NAME_KEYS}"
+            echo "body_keys=${BODY_KEYS}"
+            echo "commit_keys=${COMMIT_KEYS}"
+            echo "commit_count=${COMMIT_COUNT}"
+            echo "range=${RANGE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Skip or fail when no keys are found
+        if: steps.verify_branch.outputs.ok == 'true' && steps.collect.outputs.issue_keys == ''
+        env:
+          FAIL_IF_NO_KEYS: ${{ inputs.fail_if_no_keys }}
+        run: |
+          if [ "$FAIL_IF_NO_KEYS" = "true" ]; then
+            echo "::error::No JIRA keys matched the configured pattern in this release range."
+            exit 1
+          fi
+          echo "::notice::No JIRA keys matched; skipping JIRA notification."
+
+      - name: POST release payload to JIRA Automation
+        if: steps.verify_branch.outputs.ok == 'true' && steps.collect.outputs.issue_keys != ''
+        env:
+          ISSUE_KEYS: ${{ steps.collect.outputs.issue_keys }}
+          JIRA_WEBHOOK_URL: ${{ secrets.JIRA_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.resolve.outputs.current_tag }}
+          PREVIOUS_TAG: ${{ steps.resolve.outputs.previous_tag }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_AUTHOR: ${{ github.event.release.author.login }}
+          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TARGET: ${{ github.event.release.target_commitish }}
+          COMMIT_COUNT: ${{ steps.collect.outputs.commit_count }}
+          RANGE: ${{ steps.collect.outputs.range }}
+        run: |
+          set -euo pipefail
+
+          PAYLOAD="$(jq -n \
+            --arg event           "release.published" \
+            --arg repo            "$REPO" \
+            --arg release_tag     "$RELEASE_TAG" \
+            --arg previous_tag    "$PREVIOUS_TAG" \
+            --arg release_name    "$RELEASE_NAME" \
+            --arg release_url     "$RELEASE_URL" \
+            --arg release_author  "$RELEASE_AUTHOR" \
+            --arg published_at    "$RELEASE_PUBLISHED_AT" \
+            --arg target_commitish "$RELEASE_TARGET" \
+            --arg range           "$RANGE" \
+            --argjson is_prerelease "${RELEASE_PRERELEASE:-false}" \
+            --argjson commit_count  "${COMMIT_COUNT:-0}" \
+            --arg keys_csv        "$ISSUE_KEYS" \
+            '{
+              issues: ($keys_csv | split(",")),
+              data: {
+                event: $event,
+                repository: $repo,
+                release: {
+                  tag: $release_tag,
+                  previous_tag: $previous_tag,
+                  range: $range,
+                  name: $release_name,
+                  url: $release_url,
+                  author: $release_author,
+                  published_at: $published_at,
+                  prerelease: $is_prerelease,
+                  target_commitish: $target_commitish,
+                  commit_count: $commit_count
+                }
+              }
+            }')"
+
+          # JIRA Automation "Incoming webhook" trigger can either parse issues
+          # from the JSON body or from the ?issues=KEY-1,KEY-2 query string.
+          # Send both so either rule configuration works.
+          if [[ "$JIRA_WEBHOOK_URL" == *\?* ]]; then
+            URL="${JIRA_WEBHOOK_URL}&issues=${ISSUE_KEYS}"
+          else
+            URL="${JIRA_WEBHOOK_URL}?issues=${ISSUE_KEYS}"
+          fi
+
+          echo "Notifying JIRA Automation for release ${RELEASE_TAG} (issues: $ISSUE_KEYS)"
+          curl --fail-with-body -sS \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data "$PAYLOAD" \
+            "$URL"
+
+      - name: Summary
+        if: always()
+        env:
+          KIND_OK: ${{ steps.verify_kind.outputs.ok }}
+          BRANCH_OK: ${{ steps.verify_branch.outputs.ok }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE_FLAG: ${{ github.event.release.prerelease }}
+          TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+          PREVIOUS_TAG: ${{ steps.resolve.outputs.previous_tag }}
+          RANGE: ${{ steps.collect.outputs.range }}
+          JIRA_KEY_PATTERN: ${{ inputs.jira_key_pattern }}
+          PRERELEASE_TAG_PATTERN: ${{ inputs.prerelease_tag_pattern }}
+          ISSUE_KEYS: ${{ steps.collect.outputs.issue_keys }}
+          NAME_KEYS: ${{ steps.collect.outputs.name_keys }}
+          BODY_KEYS: ${{ steps.collect.outputs.body_keys }}
+          COMMIT_KEYS: ${{ steps.collect.outputs.commit_keys }}
+          COMMIT_COUNT: ${{ steps.collect.outputs.commit_count }}
+        run: |
+          fmt() { if [ -n "${1:-}" ]; then echo "\`$1\`"; else echo "_none_"; fi; }
+          {
+            echo "### JIRA release notification"
+            echo ""
+            echo "- Release : \`${RELEASE_TAG}\` (target_commitish: \`${TARGET_COMMITISH:-<empty>}\`, prerelease flag: \`${RELEASE_PRERELEASE_FLAG:-false}\`)"
+            if [ "${KIND_OK:-false}" != "true" ]; then
+              echo "- **Skipped**: release matches prerelease pattern \`${PRERELEASE_TAG_PATTERN}\` or has the prerelease flag set."
+              exit 0
+            fi
+            echo "- Required branch: \`${RELEASE_BRANCH}\`"
+            if [ "${BRANCH_OK:-false}" != "true" ]; then
+              echo "- **Skipped**: release is not on \`${RELEASE_BRANCH}\`."
+              exit 0
+            fi
+            echo "- Previous: \`${PREVIOUS_TAG:-<none>}\`"
+            echo "- Range   : \`${RANGE:-<none>}\`"
+            echo "- Pattern : \`${JIRA_KEY_PATTERN}\`"
+            echo ""
+            echo "| Source | Keys |"
+            echo "| --- | --- |"
+            echo "| Release name | $(fmt "${NAME_KEYS:-}") |"
+            echo "| Release body | $(fmt "${BODY_KEYS:-}") |"
+            echo "| Commits (${COMMIT_COUNT:-0} scanned) | $(fmt "${COMMIT_KEYS:-}") |"
+            echo "| **Notified to JIRA** | $(fmt "${ISSUE_KEYS:-}") |"
+          } >> "$GITHUB_STEP_SUMMARY"
