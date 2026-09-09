@@ -97,6 +97,7 @@ HELP_TICKET_URI=$(resolve "$(read_va VITE_HELP_TICKET_URI)"           "https://$
 ALB_HOSTNAME=$(resolve    "$(read_va VITE_PUBLIC_ALB_HOSTNAME)"       "services.${PROD_DOMAIN}")
 RECORDING_URI=$(resolve   "$(read_va VITE_RECORDING_URI)"             "https://${PROD_DOMAIN}/recordings/download")
 PULSE_AGENT_BASE_URI=$(resolve "$(read_va PULSE_AGENT_BASE_URI)"     "https://${PROD_DOMAIN}/agent/019e4340-e54c-73ea-8000-0000000000cb")
+VOICEBOT_TESTER_URI=$(resolve "$(read_va VOICEBOT_TESTER_URI)"   "https://${PROD_DOMAIN}/voicebot-tester")
 
 # Playground variants follow the same pattern but with a "playground."
 # subdomain prefix. PREVIEW / PRODUCTION variants stay explicit-only —
@@ -105,6 +106,7 @@ PULSE_AGENT_BASE_URI=$(resolve "$(read_va PULSE_AGENT_BASE_URI)"     "https://${
 GRAPHQL_URI_PLAYGROUND=$(resolve    "$(read_va VITE_GRAPHQL_URI_PLAYGROUND)"     "https://playground.${PROD_DOMAIN}/graphql")
 GRAPHQL_WS_URI_PLAYGROUND=$(resolve "$(read_va VITE_GRAPHQL_WS_URI_PLAYGROUND)"  "wss://playground.${PROD_DOMAIN}/graphql")
 RECORDING_URI_PLAYGROUND=$(resolve  "$(read_va VITE_RECORDING_URI_PLAYGROUND)"   "https://playground.${PROD_DOMAIN}/recordings/download")
+VOICEBOT_TESTER_URI_PLAYGROUND=$(resolve "$(read_va VOICEBOT_TESTER_URI_PLAYGROUND)" "https://playground.${PROD_DOMAIN}/voicebot-tester")
 
 # ── pure passthrough fields ───────────────────────────────────────────
 # No PROD_DOMAIN convention applies; just pull whatever is in context.
@@ -149,6 +151,7 @@ jq -n \
   --arg ga_measurement_id  "$GA_MEASUREMENT_ID" \
   --arg ld_client_id       "$LD_CLIENT_ID" \
   --arg pulse_agent_base_uri "$PULSE_AGENT_BASE_URI" \
+  --arg voicebot_tester_uri "$VOICEBOT_TESTER_URI" \
   '{
     CLIENT_ID:              $client_id,
     CLIENT_NAME:            $client_name,
@@ -171,6 +174,7 @@ jq -n \
     LAUNCHDARKLY_CLIENT_ID: $ld_client_id,
     GA_MEASUREMENT_ID:      $ga_measurement_id,
     PULSE_AGENT_BASE_URI:   $pulse_agent_base_uri,
+    VOICEBOT_TESTER_URI:    $voicebot_tester_uri,
     BRANDING:               { logo: "", primaryColor: "", companyName: "" }
   }' > "$TMP_JSON"
 
@@ -189,11 +193,13 @@ add_field() {
 add_field "GRAPHQL_URI_PLAYGROUND"             "$GRAPHQL_URI_PLAYGROUND"
 add_field "GRAPHQL_WS_URI_PLAYGROUND"          "$GRAPHQL_WS_URI_PLAYGROUND"
 add_field "RECORDING_DOWNLOAD_ENDPOINT_PLAYGROUND" "$RECORDING_URI_PLAYGROUND"
+add_field "VOICEBOT_TESTER_URI_PLAYGROUND" "$VOICEBOT_TESTER_URI_PLAYGROUND"
 
 for ENV_SUFFIX in PREVIEW PRODUCTION; do
   add_field "GRAPHQL_URI_${ENV_SUFFIX}"             "$(read_va "VITE_GRAPHQL_URI_${ENV_SUFFIX}")"
   add_field "GRAPHQL_WS_URI_${ENV_SUFFIX}"          "$(read_va "VITE_GRAPHQL_WS_URI_${ENV_SUFFIX}")"
   add_field "RECORDING_DOWNLOAD_ENDPOINT_${ENV_SUFFIX}" "$(read_va "VITE_RECORDING_URI_${ENV_SUFFIX}")"
+  add_field "VOICEBOT_TESTER_URI_${ENV_SUFFIX}" "$(read_va "VOICEBOT_TESTER_URI_${ENV_SUFFIX}")"
 done
 
 # ── emit ──────────────────────────────────────────────────────────────
