@@ -38,7 +38,7 @@ on:
       node_version:
         required: false
         type: string
-        default: "22"
+        default: "24"
       build_directory:
         required: false
         type: string
@@ -78,7 +78,7 @@ jobs:
     outputs:
       release_artifact: ${{ steps.upload_release.outputs.release_artifact }}
       release_version: ${{ steps.upload_release.outputs.release_version }}
-      
+
     steps:
       - name: Setup shared CDK environment
         uses: scalaaiinc/workflow-templates/.github/actions/setup-cdk-env@main
@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           cd "$REPO_DIR"
-          
+
           # Read version from pyproject.toml [tool.scala.release] target-version
           RELEASE_VERSION=$(python3 -c 'import tomllib, pathlib; data = tomllib.loads(pathlib.Path("pyproject.toml").read_text()); print(data.get("tool", {}).get("scala", {}).get("release", {}).get("target-version", "0.0.0"))')
           echo "Resolved release version: ${RELEASE_VERSION}"
