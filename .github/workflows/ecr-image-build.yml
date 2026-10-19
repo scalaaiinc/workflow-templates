@@ -14,7 +14,7 @@ on:
         type: string
         default: "193044710768"
       aws_region:
-        required: false        
+        required: false
         type: string
         default: "us-east-1"
       environment:
@@ -65,7 +65,7 @@ jobs:
           cdk_bootstrap_account: ${{ env.CDK_BOOTSTRAP_ACCOUNT }}
           github_pat: ${{ secrets.GITHUB_PAT }}
           python_version: "3.12"
-          node_version: "22"
+          node_version: "24"
           uv_version: "0.9.18"
 
       - name: Checkout repo
@@ -75,20 +75,20 @@ jobs:
         shell: bash
         run: |
           echo "REPO_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-      
+
       - name: Create NPMRC with CodeArtifact auth
         run: |
           aws codeartifact login --tool npm --domain scala --domain-owner ${{ env.CDK_BOOTSTRAP_ACCOUNT }} --repository npm-packages --region ${{ inputs.aws_region }}
           cp ~/.npmrc .npmrc
           echo "✅ .npmrc created with CodeArtifact credentials"
-      
-      # We want to run uv sync before docker build b/c we use scripts to calculate versions 
+
+      # We want to run uv sync before docker build b/c we use scripts to calculate versions
       - name: Install dependencies
         shell: bash
         run: |
           cd "$REPO_DIR"
           echo "📦 Installing dependencies with uv..."
-          uv sync 
+          uv sync
           echo "✅ Dependencies installed"
         env:
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
@@ -121,10 +121,10 @@ jobs:
             exit 1
           fi
           echo "Using Dockerfile: ${{ inputs.dockerfile_path }}/Dockerfile"
-          
+
       - name: Calculate and tag Docker image versions
         id: image-tags
-        shell: bash   
+        shell: bash
         run: |
           cd "$REPO_DIR"
 
@@ -164,7 +164,7 @@ jobs:
           echo "  - $IMAGE_NAME:$SHA_TAG"
           echo "  - $IMAGE_NAME:$UAT_TAG"
           echo "Reserved release promotion tag: $SERVICE_TAG_RELEASE"
-      
+
       - name: Push Docker image to ECR
         env:
           UV_INDEX_SCALA_CODEARTIFACT_USERNAME: aws
@@ -210,6 +210,3 @@ jobs:
           echo "  - $ECR_REPO_PRIMARY:$SERVICE_TAG_SHA"
           echo "  - $ECR_REPO_PRIMARY:$SERVICE_TAG_UAT"
           echo "Release promotion target: $ECR_REPO_PRIMARY:$SERVICE_TAG_RELEASE"
-      
-
-      
